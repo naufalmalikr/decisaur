@@ -19,6 +19,7 @@
  */
 
 import { Decider } from '../ollama/decider.js';
+import { HOST } from '../config.js';
 import { resolveManeuver, PolicyStats } from '../core/policy.js';
 import { analyse } from '../core/classify.js';
 import { plan as reflexPlan } from '../core/reflex.js';
@@ -108,7 +109,7 @@ const args = parseArgs(process.argv.slice(2));
 const decider = new Decider({ model: args.model, host: args.host });
 const stats = new PolicyStats();
 
-console.log(`model ${decider.model} @ ${args.host ?? 'http://127.0.0.1:11434'}`);
+console.log(`model ${decider.model} @ ${args.host ?? HOST}`);
 console.log(`scenes: ${SCENARIOS.length}  rounds: ${args.repeat}\n`);
 console.log(['scene', 'model', 'clear', 'urgent', 'conf', 'reflex', 'action', 'ok', 'ms'].join('\t'));
 console.log('-'.repeat(92));

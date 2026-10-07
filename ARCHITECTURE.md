@@ -38,7 +38,7 @@ flowchart TD
     GEO["core/geometry.js<br/>jumpProfile · clearanceWindow<br/>obstacleExtent · trexExtent"]
     VOC["core/vocabulary.js<br/>describeState → prompt text"]
     CN["core/constants.js<br/>transcribed game constants"]
-    CFG["config.js<br/>shared tunables"]
+    CFG["config.js<br/>tunables from .env"]
 
     BA --> CTRL
     RS --> CTRL
@@ -192,6 +192,8 @@ it is counted. The error rate is therefore a visible number in the HUD and in
 | `core/policy.js` | `resolveManeuver()`, `PolicyStats`. |
 | `core/controller.js` | The pipeline. |
 | `core/vocabulary.js` | The model-facing prose, including the distance phrasing and the bird-height bands. |
+| `config.js` | The tunables, read from `.env` and validated once on load. No values of its own. |
+| `env.js` | The `.env` contract: key names, types, range rules, and the one aggregated error message. Free of `node:fs` and `node:process` so it bundles. |
 
 ### How feasibility is derived
 
@@ -236,8 +238,8 @@ jump when  centreDistance <= threshold
 ```
 
 The window moves with speed, because gravity is per-frame rather than per-second.
-`JUMP_AIM = 0.54` was swept, not guessed (`node src/node/sweep-aim.js`, survival of a
-20000-frame run):
+`JUMP_AIM` is `0.54` by default (`.env` `DECISAUR_JUMP_AIM`) and was swept, not guessed
+(`node src/node/sweep-aim.js`, survival of a 20000-frame run):
 
 ```
 aim   0.40  0.46  0.50  0.54  0.58  0.60  0.70  0.90
@@ -367,8 +369,8 @@ cactus it had been told to wait for — 0 jumps, dead at frame 86.
 So `Decider` keys its dedup on `(token, band)`. The controller re-asks on crossing into
 the near band at 300px (`NEAR_BAND_PX`), which is the most the round trip allows: at the
 top speed of 13px/frame ~210ms is ~165px of travel, putting the second answer near 135px.
-Late, but `JUMP_AIM = 0.54` sits past the middle of the clearance window precisely so a
-slightly late jump still clears. Measured at ~1.6 queries per obstacle.
+Late, but `JUMP_AIM` (0.54 by default) sits past the middle of the clearance window
+precisely so a slightly late jump still clears. Measured at ~1.6 queries per obstacle.
 
 ### The question set
 
@@ -721,19 +723,45 @@ the System One phase is measured separately rather than interpolated.
 
 ## 11. Configuration
 
-`src/config.js` is imported by both the browser bundle and the Node CLIs, so it must stay
-free of Node-only and DOM-only APIs.
+The tunables live in `.env` at the repo root, not in source. `.env.example` is committed
+and holds both the values and the reasoning behind them; your `.env` is not.
 
-| Key | Default | Purpose |
-|---|---|---|
-| `DEFAULT_HOST` | `http://127.0.0.1:11434` | direct Ollama endpoint |
-| `DEFAULT_MODEL` | `tev1:0.8b` | System One decision head |
-| `KEEP_ALIVE` | `10m` | keeps the model resident; cold start costs ~300ms |
-| `POLICY.minProbability` | `0.5` | minimum probability to override the reflex |
-| `POLICY.minConfidence` | `0.2` | fallback floor when a class has no specific one |
-| `LOOP.perceptionRange` | `460` px | when an obstacle enters the model's view |
-| `LOOP.maxConcurrent` | `1` | hard cap on in-flight queries |
-| `JUMP_AIM` | `0.54` | where in the clearance window to line the obstacle up |
+`src/config.js` is imported by both the browser bundle and the Node CLIs, so it must stay
+free of Node-only and DOM-only APIs. That constraint is what forces two transports for
+one file, because a script pasted into the DevTools console cannot open a file from disk:
+
+- **`scripts/build.mjs`** reads `.env` and substitutes it as the `__DECISAUR_ENV__`
+  esbuild `define`, the same mechanism `__DECISAUR_MODE__` uses for the build mode. Each
+  `dist/*.user.js` therefore carries its own copy of the config, baked in at build time.
+  Editing `.env` has no effect on a bundle until the build runs again.
+- **The Node CLIs** read the same file at startup via `process.loadEnvFile`, so they pick
+  up edits immediately. That call does not overwrite variables already in the
+  environment, so a shell export overrides the file — `DECISAUR_MODEL=tev1:2b npm run sim`
+  works without editing anything.
+
+Both paths pass raw strings to `resolveConfig` in `src/env.js`, which is the single
+definition of a legal value and the single source of the error message. It touches
+neither `node:fs` nor `node:process`, because it is bundled into the browser artefact.
+
+There are **no fallback values**. Every key is required; a missing or malformed one stops
+the build and reports every problem in one run rather than the first. A config that
+invents a value when one is missing is a config you cannot reason about — a typo in
+`DECISAUR_HOST` would quietly talk to a different endpoint than the operator believes
+they set.
+
+| `.env` key | Default | Export | Purpose |
+|---|---|---|---|
+| `DECISAUR_HOST` | `http://127.0.0.1:11434` | `HOST` | direct Ollama endpoint, needs the scheme |
+| `DECISAUR_MODEL` | `tev1:0.8b` | `MODEL` | System One decision head |
+| `DECISAUR_KEEP_ALIVE` | `10m` | `KEEP_ALIVE` | keeps the model resident; cold start costs ~300ms |
+| `DECISAUR_PERCEPTION_RANGE` | `460` | `LOOP.perceptionRange` | when an obstacle enters the model's view |
+| `DECISAUR_MAX_CONCURRENT` | `1` | `LOOP.maxConcurrent` | hard cap on in-flight queries |
+| `DECISAUR_JUMP_AIM` | `0.54` | `JUMP_AIM` | where in the clearance window to line the obstacle up |
+
+`DECISAUR_HOST` is deliberately **not** `OLLAMA_HOST`. `scripts/cors-proxy.mjs` already
+reads `OLLAMA_HOST` as a bare hostname with no scheme and no port, and pairs it with
+`OLLAMA_PORT`; reusing one name for a full base URL and a bare host would be a silent
+trap.
 
 `perceptionRange` is sized from the round trip: at the game's top speed of 13px/frame
 @60fps = 780px/s, 460px buys ~590ms of warning — enough for a ~260ms round trip plus slack.
@@ -776,8 +804,8 @@ cited locations carry the detail.
 | Change what `hold` means | `decider.js` `URGENT_THRESHOLD`, `geometry.js` `describeDistance()` |
 | Change how a scene is described to the model | `vocabulary.js` `describeObstacle()` — re-run `probe-wording.js` after any wording change |
 | Re-gate the model's opinion | `policy.js` `resolveManeuver()`. There is no usable confidence to gate on; see §3 before adding one |
-| Change when the model is consulted | `config.js` `LOOP.perceptionRange` / `maxConcurrent`, and `controller.js` `NEAR_BAND_PX` |
-| Change jump timing | `config.js` `JUMP_AIM`, then re-run `sweep-aim.js`. Applies to model-chosen jumps too, via `reflex.js` `jumpThreshold()` |
+| Change when the model is consulted | `.env` `DECISAUR_PERCEPTION_RANGE` / `DECISAUR_MAX_CONCURRENT`, and `controller.js` `NEAR_BAND_PX` |
+| Change jump timing | `.env` `DECISAUR_JUMP_AIM`, then re-run `sweep-aim.js`. Applies to model-chosen jumps too, via `reflex.js` `jumpThreshold()` |
 | Adapt to a renamed game internal | `core/state.js` `readState()`, `browser/agent.js` `runner()` |
 | Add a build mode | `browser/modes.js` — `build.mjs` picks it up automatically |
 | Score the model somewhere new | `PolicyStats.scoreManeuver()` against `reflexPlan(state).action` |

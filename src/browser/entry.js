@@ -16,7 +16,7 @@
  */
 
 import { Agent } from './agent.js';
-import { DEFAULT_HOST, DEFAULT_MODEL } from '../config.js';
+import { HOST, MODEL } from '../config.js';
 import { DEFAULT_MODE, MODES, isMode } from './modes.js';
 
 /**
@@ -35,8 +35,10 @@ let agent = null;
 function readOptions() {
   const g = /** @type {any} */ (globalThis);
   return {
-    model: g.decisaurModel ?? DEFAULT_MODEL,
-    host: g.decisaurHost ?? DEFAULT_HOST,
+    // Overrides a `.env` value baked in at build time, which is how a pasted bundle is
+    // pointed at the proxy. Changing `.env` instead needs a rebuild.
+    model: g.decisaurModel ?? MODEL,
+    host: g.decisaurHost ?? HOST,
     hud: g.decisaurHud !== false,
   };
 }
@@ -71,6 +73,6 @@ boot();
 
 const mode = MODES[BUILD_MODE];
 console.info(
-  `[decisaur] ${mode.userscriptName} attached - ${mode.label(DEFAULT_MODEL)}. ${mode.blurb}`,
+  `[decisaur] ${mode.userscriptName} attached - ${mode.label(MODEL)}. ${mode.blurb}`,
 );
 console.info('[decisaur] click the page so it has keyboard focus, then press space.');

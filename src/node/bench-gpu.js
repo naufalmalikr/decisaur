@@ -56,7 +56,7 @@
  */
 
 import * as childProcess from 'node:child_process';
-import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE, LOOP } from '../config.js';
+import { HOST, MODEL, KEEP_ALIVE, LOOP } from '../config.js';
 import { QUESTIONS } from '../ollama/decider.js';
 
 /** Scene descriptions reused across both phases; only what is on screen, never the class. */
@@ -71,7 +71,7 @@ const GENERATE_PROMPT = SCENES[0];
 function parseArgs(argv) {
   const args = {
     host: undefined,
-    model: DEFAULT_MODEL,
+    model: MODEL,
     concurrency: '1,2,4,8',
     numPredict: 128,
     requests: 8,
@@ -226,7 +226,7 @@ async function systemoneOnce(host, model, scene) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const host = args.host ?? process.env.OLLAMA_HOST ?? DEFAULT_HOST;
+const host = args.host ?? HOST;
 const gpuTotalMiB = 4096; // GTX 1050 Ti Max-Q; only used to label the residency ratio.
 
 console.log(`decisaur GPU benchmark`);

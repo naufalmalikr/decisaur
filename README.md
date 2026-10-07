@@ -83,13 +83,27 @@ anecdote.
 
 ## Install
 
-Requires Node 20+ and a local Ollama with the model pulled.
+Requires Node 20.12+ and a local Ollama with the model pulled.
 
 ```sh
 ollama pull tev1:0.8b
 npm install
+cp .env.example .env          # tunables: host, model, keep-alive, perception, JUMP_AIM
 npm run build
 ```
+
+`.env` is yours and is not committed; `.env.example` is committed and documents every
+key with the measurement behind its default. There are no fallbacks in the source - a
+missing or invalid key stops `npm run build` rather than producing a bundle that
+behaves differently from what you think you configured.
+
+Your shell environment wins over the file, so `DECISAUR_MODEL=tev1:2b npm run sim`
+works for a one-off without editing anything.
+
+Configuration reaches the browser bundles by being **inlined at build time**, not read
+at runtime: a script pasted into the DevTools console cannot open a file. So editing
+`.env` has no effect on a bundle until you run `npm run build` again. The Node CLIs
+read the same file at startup, so those pick up changes immediately.
 
 ## Use it in the browser
 
@@ -196,8 +210,11 @@ maneuver is a function of distance and not only of shape - a high bird 900px out
 ## Layout
 
 ```
+.env.example                committed template for .env: host, model, keep-alive,
+                            perception range, JUMP_AIM, with the reasoning
 src/
-  config.js              tunables: model, host, confidence gates, JUMP_AIM
+  config.js                 tunables read from .env, validated on load
+  env.js                    the .env contract: key names, types, validation
   core/
     constants.js         game physics, transcribed, with provenance
     geometry.js          jump arc, clearance windows, collision extents
@@ -225,7 +242,7 @@ src/
     probe-latency.js     latency vs question count
     probe-perception.js  readState -> analyse -> describeObstacle across obstacle shapes
     bench-gpu.js         concurrency + System One benchmark
-scripts/build.mjs        esbuild -> dist/*.user.js
+scripts/build.mjs        esbuild -> dist/*.user.js, .env values inlined
 scripts/cors-proxy.mjs   127.0.0.1:11436 -> Ollama, Origin stripped
 ```
 

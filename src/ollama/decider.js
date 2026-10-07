@@ -65,7 +65,7 @@
  */
 
 import { Ollama } from 'ollama/browser';
-import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE, LOOP } from '../config.js';
+import { HOST, MODEL, KEEP_ALIVE, LOOP } from '../config.js';
 
 
 /**
@@ -215,10 +215,10 @@ export class Decider {
    * @param {(decision: ManeuverDecision, context: {token: string}) => void} [options.onDecision]
    */
   constructor(options = {}) {
-    this.model = options.model ?? DEFAULT_MODEL;
+    this.model = options.model ?? MODEL;
     this.maxConcurrent = options.maxConcurrent ?? LOOP.maxConcurrent;
     this.onDecision = options.onDecision ?? null;
-    this.client = new Ollama({ host: options.host ?? DEFAULT_HOST });
+    this.client = new Ollama({ host: options.host ?? HOST });
 
     /** @type {Map<string, ManeuverDecision>} */
     this.decisions = new Map();

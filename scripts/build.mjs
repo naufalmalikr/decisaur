@@ -15,15 +15,55 @@
  *
  * `decisaur.user.js` keeps its original name so an existing Tampermonkey install
  * and the README instructions keep working unchanged.
+ *
+ * The bundles also carry their configuration. A pasted script cannot open `.env`
+ * itself, so the values are read here and inlined as `__DECISAUR_ENV__` - the same
+ * define mechanism `__DECISAUR_MODE__` uses for the mode. Consequence: editing `.env`
+ * has no effect on an already-built bundle until this runs again.
  */
 
 import { build } from 'esbuild';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickConfigKeys, resolveConfig } from '../src/env.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const minify = process.argv.includes('--minify');
+
+/**
+ * Read `.env` and hand back the raw key/value pairs.
+ *
+ * Validated here as well as in the bundle, so a typo fails the build instead of
+ * producing an artefact that throws when it is pasted into the console. The strings
+ * are passed through raw rather than the parsed numbers: the bundle re-runs
+ * `resolveConfig` at load, so there is one implementation of the rules rather than one
+ * per transport.
+ *
+ * @returns {Record<string, string | undefined>}
+ */
+function loadEnv() {
+  const path = process.env.DECISAUR_ENV_FILE ?? resolve(root, '.env');
+  try {
+    process.loadEnvFile(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error(
+        `decisaur: no configuration at ${path}. Copy the template and edit it:\n` +
+          '  cp .env.example .env\n' +
+          '(set DECISAUR_ENV_FILE to point somewhere else)',
+      );
+    }
+    throw error;
+  }
+
+  const raw = pickConfigKeys(process.env);
+  resolveConfig(raw);
+  return raw;
+}
+
+const rawEnv = loadEnv();
+const built = resolveConfig(rawEnv);
 
 /** Build one mode. Returns the output size in kB. */
 async function buildMode(id, file, userscriptName) {
@@ -37,7 +77,10 @@ async function buildMode(id, file, userscriptName) {
     write: false,
     legalComments: 'none',
     logLevel: 'warning',
-    define: { __DECISAUR_MODE__: JSON.stringify(id) },
+    define: {
+      __DECISAUR_MODE__: JSON.stringify(id),
+      __DECISAUR_ENV__: JSON.stringify(rawEnv),
+    },
   });
 
   const [output] = result.outputFiles;
@@ -72,3 +115,8 @@ for (const mode of Object.values(MODES)) {
 }
 
 console.log(`decisaur: 3 builds written to dist/.`);
+console.log(
+  `decisaur: config baked in from .env - host ${built.host}, model ${built.model}, ` +
+    `perceptionRange ${built.perceptionRange}px, jumpAim ${built.jumpAim}`,
+);
+console.log(`decisaur: editing .env now changes nothing until this build runs again.`);

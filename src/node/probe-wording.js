@@ -20,10 +20,10 @@
 
 import { Ollama } from 'ollama/browser';
 import { QUESTIONS } from '../ollama/decider.js';
-import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE } from '../config.js';
+import { HOST, MODEL, KEEP_ALIVE } from '../config.js';
 
-const client = new Ollama({ host: process.env.OLLAMA_HOST ?? DEFAULT_HOST });
-const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
+const client = new Ollama({ host: HOST });
+const model = MODEL;
 
 /**
  * What `analyse()` says each obstacle needs, from the collision boxes.

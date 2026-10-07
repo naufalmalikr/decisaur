@@ -20,10 +20,10 @@
  */
 
 import { Ollama } from 'ollama/browser';
-import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE } from '../config.js';
+import { HOST, MODEL, KEEP_ALIVE } from '../config.js';
 
-const client = new Ollama({ host: process.env.OLLAMA_HOST ?? DEFAULT_HOST });
-const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
+const client = new Ollama({ host: HOST });
+const model = MODEL;
 
 /**
  * Scenes spanning the three maneuvers, plus the two bird heights the game actually
