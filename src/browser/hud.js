@@ -30,6 +30,17 @@ export class Hud {
   /** @param {string} title */
   constructor(title) {
     this.title = title;
+    /**
+     * The last frame the game was actually being played on, kept verbatim.
+     *
+     * A crash is the frame worth reading: the obstacle, the model's answer, and the
+     * reason for the action are all still true, but they are gone by the next tick,
+     * because a crashed game produces no plan to report. So the HUD freezes the last
+     * live body under the crash banner instead of dropping the run's evidence.
+     *
+     * @type {string | null}
+     */
+    this.lastLiveBody = null;
     this.el = document.createElement('div');
     this.el.setAttribute('data-decisaur', 'hud');
     this.el.setAttribute('style', BASE);
@@ -38,24 +49,46 @@ export class Hud {
 
   /** @param {object} view */
   render(view) {
-    const lines = [`<b>${this.title}</b>  ${DIM}${view.mode}</span>`];
+    const head = `<b>${this.title}</b>  ${DIM}${view.mode}</span>`;
+    const { state } = view;
+    const live = state !== null && state.playing && !state.crashed;
 
-    const { state, plan } = view;
-    if (state === null || !state.playing || state.crashed) {
-      // Kept as separate branches on purpose: "no game found" and "game not
-      // started" need opposite responses, and merging them misleads the reader.
-      if (state === null) {
-        lines.push(`${BAD}no Runner.instance_ found</span>`);
-        lines.push(`${DIM}the game was not located; nothing to press</span>`);
-      } else if (state.crashed) {
-        lines.push(`${BAD}crashed</span>`);
-        lines.push(`${DIM}press space to restart</span>`);
-      } else {
-        lines.push(`${DIM}press space to start the game</span>`);
-      }
-      this.el.innerHTML = lines.join('\n');
+    if (live) {
+      this.lastLiveBody = this.body(view);
+      this.el.innerHTML = `${head}\n${this.lastLiveBody}`;
       return;
     }
+
+    const lines = [head];
+    // Kept as separate branches on purpose: "no game found", "game not started", and
+    // "crashed" need different responses, and merging them misleads the reader.
+    if (state === null) {
+      lines.push(`${BAD}no Runner.instance_ found</span>`);
+      lines.push(`${DIM}the game was not located; nothing to press</span>`);
+    } else if (state.crashed) {
+      lines.push(`${BAD}crashed</span>`);
+      lines.push(`${DIM}press space to restart</span>`);
+      if (this.lastLiveBody !== null) {
+        lines.push(`${DIM}last frame before impact</span>`);
+        lines.push(`${DIM}${'─'.repeat(28)}</span>`);
+        lines.push(this.lastLiveBody);
+      }
+    } else {
+      lines.push(`${DIM}press space to start the game</span>`);
+    }
+    this.el.innerHTML = lines.join('\n');
+  }
+
+  /**
+   * Telemetry for one live frame. Split out of {@link render} so the crash branch can
+   * replay the previous frame's exact text.
+   *
+   * @param {object} view
+   * @returns {string}
+   */
+  body(view) {
+    const lines = [];
+    const { state, plan } = view;
 
     lines.push(`${state.speed.toFixed(1)}px/f  d${Math.round(state.distance)}</span>`);
     lines.push(`${DIM}${'─'.repeat(28)}</span>`);
@@ -109,7 +142,7 @@ export class Hud {
       lines.push(`${DIM}lat ${d.averageLatencyMs.toFixed(0)}ms avg  q${d.stats.queries}  err${d.stats.failures}</span>`);
     }
 
-    this.el.innerHTML = lines.join('\n');
+    return lines.join('\n');
   }
 
   destroy() {
