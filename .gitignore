@@ -152,7 +152,3 @@ vite.config.ts.timestamp-*
 .kilo
 .omo
 .playwright-mcp
-
-# Documents
-DISCUSSION.md
-OLLAMA.md
