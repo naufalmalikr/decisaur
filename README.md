@@ -8,6 +8,10 @@ The interesting part is not that it plays well. It is the finding underneath:
 **on this game the model cannot improve the score, and the project is built so
 that is measurable rather than asserted.**
 
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — the decision pipeline, every module, the policy
+  gates, the prompt design, the build modes, the offline harness, and the platform traps
+  the code guards.
+
 ---
 
 ## The short version
@@ -70,7 +74,8 @@ npm run build
 
 Chrome will not let `chrome://dino` reach a loopback address at all, so two separate
 things are needed before the bot can query the model: a launch flag, and the proxy.
-See [Limitations](#limitations) for the measurements behind this.
+Both refusals are measured and explained in
+[ARCHITECTURE.md §9](ARCHITECTURE.md#9-the-two-refusals); this is the short version.
 
 1. **Launch Chrome with the local-network check disabled.** There is no
    `chrome://flags` entry for this any more, so it has to go on the command line:
@@ -80,7 +85,8 @@ See [Limitations](#limitations) for the measurements behind this.
    ```
 
    To make it permanent, add the flag to the `Exec=` line in
-   `~/.local/share/applications/google-chrome.desktop`.
+   `~/.local/share/applications/google-chrome.desktop`. Serving the game from an
+   `http://localhost` page instead also works and disables nothing.
 
 2. **Start the proxy**, which fixes the separate Ollama-side refusal:
 
@@ -90,8 +96,7 @@ See [Limitations](#limitations) for the measurements behind this.
 
 3. Open `chrome://dino`, press <kbd>F12</kbd>, open the **Console**.
 4. Set the host, then paste and run the build you want - `dist/decisaur.user.js`
-   for normal play, or one of the two A/B builds listed under
-   [The three builds](#the-three-builds):
+   for normal play, or one of the two A/B builds below:
 
    ```js
    decisaurHost = 'http://127.0.0.1:11436';
@@ -135,7 +140,8 @@ decisaur.mode      // which build this is
 ## Use it headlessly
 
 Everything runs without a browser, against a port of the game's physics in
-`src/node/sim.js`.
+`src/node/sim.js`. The full harness list is in
+[ARCHITECTURE.md §10](ARCHITECTURE.md#10-offline-harness).
 
 ```sh
 npm run replay                       # score the model against collision geometry
@@ -153,49 +159,12 @@ model query ever completes, which looks like success while measuring nothing.
 node src/node/sweep-aim.js           # how JUMP_AIM was chosen
 node src/node/probe-prompt.js        # why the prompt asks for a class, not a maneuver
 node src/node/probe-latency.js       # latency vs question count
+npm run bench                        # GPU throughput vs the load the loop applies
 ```
 
 ---
 
-## How the model is prompted
-
-The question set was measured, not guessed. Four encodings of the same decision
-against `tev1:0.8b`:
-
-| Encoding | Latency | Confidence | Discriminates |
-|---|---|---|---|
-| JSON state, `jump`/`duck`/`hold` choice | ~610ms | 0.08-0.18 | **no** - always jump |
-| Sentence state, `jump`/`duck`/`hold` choice | ~300ms | 0.37-0.42 | jump vs duck, never hold |
-| **Sentence state, obstacle-class choice** | **~260ms** | **0.28-0.99** | **yes** |
-| Two binary `noul` questions | ~400ms | n/a | poorly (0.47 vs 0.69) |
-
-So the model is asked what it is *looking at*, not what it should *do*:
-
-```js
-{
-  kind: {
-    type: 'choice',
-    instructions: 'Look at the obstacle ahead of the running T-Rex and say what kind of obstacle it is.',
-    criteria: {
-      cactus:     'A cactus or other solid object standing on the ground.',
-      bird_high:  'A bird flying high above the ground, with open space underneath it.',
-      bird_low:   'A bird flying at the same height as the T-Rex.',
-    },
-  },
-}
-```
-
-Two rules keep the measurement honest:
-
-- **Prose, not JSON.** The same obstacle described as a JSON object gave a flat
-  distribution with confidence 0.08; as a sentence it gave a clean argmax at 0.99.
-- **No answer in the prompt.** The description reports only what is on screen -
-  airborne or not, and the raw `yPos`. It never names the class and never hands
-  over the collision extents that `classify.js` uses to derive the answer. If the
-  prompt contained the answer, scoring the model against geometry would just be
-  measuring an echo.
-
-### What it actually gets wrong
+## What the model gets wrong
 
 80% over 40 samples, and the error is systematic rather than random:
 
@@ -209,83 +178,14 @@ Two rules keep the measurement honest:
 It reads a body-height bird as "high overhead" every single time. The gate catches
 all 8 of 8, the dino jumps correctly, and the HUD counts the mistake.
 
----
-
-## Why geometry, and not the model, owns timing
-
-A jump has an arc. It is only survivable inside the clearance window that
-geometry computes. An early version let the model pick the maneuver *and* trigger
-it the instant its answer arrived - which made the dino leap when the round trip
-completed rather than when the cactus arrived, and land on it. Both `--oracle` and
-`--adversarial` died within a second, about 250 frames in.
-
-So the policy may substitute one executable maneuver for another, but a jump is
-only offered to the model once the reflex has armed the window. Ducking and
-holding have no arc, so they stay available at any time.
-
-There is a second hazard in the same family: **never press duck while airborne.**
-`Runner.onKeyDown` intercepts ArrowDown during a jump and calls `setSpeedDrop()`,
-so the press both slams the dino into the floor and gets swallowed - the duck never
-happens at all. The controller suppresses it centrally so both front ends inherit
-the guard.
-
----
-
-## Game internals
-
-Constants are transcribed in `src/core/constants.js` from the runner's `index.js`,
-with provenance noted per block. The browser bot reads all of them back off the
-live game every frame and only falls back to that file, so the jump arc tracks
-whatever Chrome build is running. The headless simulator has no live game to read,
-which is why they are there at all.
-
-Details that are easy to get wrong, and were:
-
-- `Trex.config` spells it **`INIITAL_JUMP_VELOCITY`** - a long-standing upstream
-  typo. Reading only the correct spelling silently falls back and jumps wrong.
-- `Runner.config` *also* has an `INITIAL_JUMP_VELOCITY`, positive `12`, on a
-  different object. Reading the wrong one gets the sign wrong.
-- On reaching `MAX_JUMP_HEIGHT` the game calls `endJump()`, which clamps velocity
-  to `DROP_VELOCITY` (-5) - **still moving upward**. So the apex is *not* capped
-  at `MAX_JUMP_HEIGHT`; the dino peaks around 91px above its standing top.
-- The game applies `jumpVelocity` to `yPos` and only *then* adds gravity. Reversing
-  that order shifts the arc by a frame.
-- Ducking does not move `yPos`. The shorter silhouette comes entirely from the
-  ducking collision box starting 18px lower.
-- A pterodactyl sprite is 40px tall but its collision extent is only 19px, and the
-  boxes sit far from the sprite's top-left. Classifying a bird by `yPos` alone is
-  wrong, which is why classification is derived from the boxes.
-
-### Which maneuver is actually possible
-
-Standing dino occupies y 93-136; ducking, y 111-136.
-
-| Obstacle | Extent | Duck | Run | Maneuver |
-|---|---|---|---|---|
-| `CACTUS_LARGE` | 90-140 | hit | hit | jump |
-| `CACTUS_SMALL` | 105-139 | hit | hit | jump |
-| bird at y=100 | 108-127 | hit | hit | jump |
-| bird at y=75 | 83-102 | **free** | hit | duck |
-| bird at y=50 | 58-77 | **free** | **free** | hold |
-
-Ducking works for *two* of the three bird heights, and only one of those is "high"
-by any naive `yPos` threshold. Hence three classes derived from boxes.
-
-### Jump timing
-
-`JUMP_AIM` is where in the clearance window the obstacle gets lined up. A jump
-lasts ~34 frames and at top speed consecutive obstacles can be only 22-34 frames
-apart, so the dino is sometimes still airborne when the next one arrives. The
-value was swept, not guessed:
-
-```
-aim   0.40  0.46  0.50  0.54  0.58  0.60  0.70  0.90
-ok    8/20  14/20 15/20 19/24 13/24  9/20   0/12  0/12
-```
-
-The curve is sharply peaked and aiming late is fatal: the obstacle then arrives
-exactly as the dino descends back through the clearance height. `0.54` holds up on
-held-out seeds.
+The model is asked what it is *looking at* rather than what it should *do*, because
+that question measured both cheaper and sharper than asking for a maneuver, and
+because a sentence is scored far better than a JSON blob. The description
+deliberately never names the class or the collision extents - otherwise scoring the
+model against geometry would just be measuring an echo. The prompt, the encoding
+comparison behind it, and the swept `JUMP_AIM` value are in
+[ARCHITECTURE.md §6](ARCHITECTURE.md#6-model-transport) and
+[§4](ARCHITECTURE.md#4-geometry-and-classification).
 
 ---
 
@@ -317,12 +217,15 @@ src/
     sweep-aim.js         JUMP_AIM sweep
     probe-prompt.js      prompt-encoding comparison
     probe-latency.js     latency vs question count
-scripts/build.mjs        esbuild -> dist/decisaur.user.js
+    bench-gpu.js         concurrency + System One benchmark
+scripts/build.mjs        esbuild -> dist/*.user.js
+scripts/cors-proxy.mjs   127.0.0.1:11436 -> Ollama, Origin stripped
 ```
 
 `controller.js` is DOM-free on purpose: the browser agent and the headless
 simulator drive the same object, so the simulator exercises the real decision path
-rather than a reimplementation that can drift from it.
+rather than a reimplementation that can drift from it. Module-by-module
+responsibilities are in [ARCHITECTURE.md §4](ARCHITECTURE.md#modules).
 
 ---
 
@@ -333,51 +236,28 @@ rather than a reimplementation that can drift from it.
   when the next obstacle needs a jump, and it lands after that obstacle's window
   has already opened. Crash breakdown across those 18 failures - 14 airborne into
   `CACTUS_LARGE`, 2 running into `CACTUS_LARGE`, 2 into a pterodactyl.
-  This is a limit of a jump-only strategy, not something the model addresses. It
-  was traced rather than papered over, and ArrowDown speed-drop does not fix it:
+  This is a limit of a jump-only strategy, not something the model addresses.
+  It was traced rather than papered over, and ArrowDown speed-drop does not fix it:
   from the apex it descends *slower* than gravity alone (3px/frame against ~5px/frame
   average), so cutting the jump short lands the dino later, not sooner.
 - **Chrome's pterodactyl has two heights, not three.** Some mirrors use three.
   Classification reads `yPos` from the live game so both work, but the constants
   table lists three.
-- The bot reads and writes `Runner` internals, which are not a public API. Current
-  Chrome has modularised them: the singleton is behind `Runner.getInstance()` rather
-  than a `Runner.instance_` property, and `Runner` itself is a lexical binding rather
-  than a `window` property. `Agent.runner()` handles all three shapes, but a
-  sufficiently large rename would need attention.
-- **Reaching Ollama from `chrome://dino` requires disabling a security check.** The
-  page has an opaque origin (`null`) and is not a secure context, so Chrome refuses
-  `fetch` into the loopback address space. The refusal is local to the renderer:
-  measured on Chrome 154, **no preflight and no request reach the network at all**,
-  which is why it is reported as a CORS failure rather than a connection error. No
-  response header can fix it, because nothing is sent - and `OLLAMA_ORIGINS` cannot
-  either, since the browser never gets as far as reading it.
-
-  Chrome enforces this with the `LocalNetworkAccessChecks` feature. Its
-  `chrome://flags` entry has been removed, but the feature has not, so the launch
-  flag still works:
-
-  | Initiator | `isSecureContext` | Result |
-  |---|---|---|
-  | opaque origin `null`, stock Chrome | `false` | blocked, zero network traffic |
-  | opaque origin `null`, `--disable-features=LocalNetworkAccessChecks` | `false` | `200`, model answers |
-  | `http://localhost` page | `true` | `200`, model answers |
-
-  The last row is the way out if you would rather not disable anything: a page served
-  from `http://localhost` is a secure context and is not gated at all. Only this one
-  column depends on the current Chrome behaviour - if the feature is renamed or the
-  flag stops working, the flag-based setup breaks with it.
-- **The proxy is still required, for the separate Ollama-side failure.** Once Chrome
-  is allowed to make the request, Ollama refuses it anyway. Its browser-origin
-  middleware answers *any* request carrying an `Origin` it does not allow with a bare
-  `403` and no CORS headers, and `Origin: null` is never allowed - so a proxy that only
-  answered the preflight still gets `403` on every model call. `scripts/cors-proxy.mjs`
-  therefore drops `Origin` on the way to Ollama, which is what gets a `200` at all, and
-  adds `Access-Control-Allow-Origin` plus `Access-Control-Allow-Private-Network` on
-  the way back. Measured with `Origin: null`: direct to Ollama `403`, through the proxy
-  `200` with the model answering at 0.996 confidence.
+- **The bot reads and writes `Runner` internals, which are not a public API.**
+  Current Chrome has modularised them, and a sufficiently large rename would need
+  attention. See [ARCHITECTURE.md §8](ARCHITECTURE.md#agentrunner-three-shapes).
+- **Reaching Ollama from `chrome://dino` requires disabling a security check**, and
+  the second, Ollama-side refusal always needs the proxy. Both are measured, and
+  the proxy is not optional: dropping `Origin` upstream is what gets a `200` at all.
+  Only the Chrome column depends on current Chrome behaviour - if the feature is
+  renamed or the flag stops working, the flag-based setup breaks with it. See
+  [ARCHITECTURE.md §9](ARCHITECTURE.md#9-the-two-refusals).
 - **With Ollama down or unreachable, the bot still plays.** This is the design
   working, not a bug: the reflex layer is geometry-driven and synchronous, so it
   never waits on a model round trip. The HUD then shows `model query failed` as the
-  reason and `model share 0%`, which is the honest report of a model that contributed
-  nothing that run.
+  reason and `model share 0%`, which is the honest report of a model that
+  contributed nothing that run.
+
+Game internals - transcribed constants, which maneuver is actually possible, and
+the upstream typo that will silently break your jump - are collected in
+[ARCHITECTURE.md §12](ARCHITECTURE.md#12-traps-the-code-guards-against).
