@@ -102,8 +102,8 @@ export class Hud {
       if (view.modelManeuver !== null) {
         const agree = view.modelManeuver === analysis.preferred;
         verdict = agree
-          ? `model  ${view.modelManeuver}  ${GOOD}ok</span>`
-          : `model  ${view.modelManeuver}  ${BAD}!=${analysis.preferred}</span>`;
+          ? `model ${view.modelManeuver} ${GOOD}ok</span>`
+          : `model ${view.modelManeuver} ${BAD}!= ${analysis.preferred}</span>`;
       }
       lines.push(verdict);
       lines.push(

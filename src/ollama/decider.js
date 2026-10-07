@@ -106,9 +106,9 @@ export const QUESTIONS = {
   clear: {
     type: 'choice',
     instructions:
-      'A man runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
-      'A cactus standing on the ground must be jumped.\n' +
-      'A bird flying above the runner must be bowed under.\n' +
+      'A man running and cannot stop, say which maneuver clears the obstacle ahead. ' +
+      'A cactus standing on the ground must be jumped. ' +
+      'A bird flying above the runner must be bowed under. ' +
       'A bird flying at the same height as the runner must be jumped.',
     criteria: {
       jump: 'Jump: go over the top of it.',
