@@ -147,3 +147,12 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Development
+.kilo
+.omo
+.playwright-mcp
+
+# Documents
+DISCUSSION.md
+OLLAMA.md

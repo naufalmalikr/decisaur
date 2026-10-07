@@ -1,0 +1,23 @@
+{
+  "name": "decisaur",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome T-Rex Runner bot whose maneuvers are chosen by an Ollama System One decision model",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "proxy": "node scripts/cors-proxy.mjs",
+    "replay": "node src/node/replay.js",
+    "sim": "node src/node/run-sim.js",
+    "bench": "node src/node/bench-gpu.js"
+  },
+  "dependencies": {
+    "ollama": "^0.6.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
