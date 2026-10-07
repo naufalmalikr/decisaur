@@ -90,8 +90,6 @@ export const QUESTIONS = {
     instructions:
       'A man runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
       'Anything standing on the ground must be jumped. A bird flying above the runner must be ducked under.',
-      // 'Anything standing on the ground must be jumped. A bird flying above the runner must be ducked under. ' +
-      // 'A bird flying at the runner\'s own height must be jumped, because ducking would not fit under it.',
     criteria: {
       jump: 'Jump: go over the top of it.',
       duck: 'Duck: shrink down and go underneath it.',
