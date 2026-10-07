@@ -104,15 +104,34 @@ export const OBSTACLE_TYPES = {
 };
 
 /**
- * Chromium's own `Obstacle.types` uses different keys for the same sprites, and
- * its pterodactyl has two heights rather than three. Both spellings map onto the
- * same three classes so the bot works on either build.
+ * Alternative spellings of the same three obstacle classes.
+ *
+ * Two separate divergences have to be covered, because they are separate problems:
+ *
+ *  1. **Where the name lives.** Current Chromium does not put a type string on the
+ *     obstacle at all - `Obstacle` carries only `typeConfig`, and the name is
+ *     `obstacle.typeConfig.type` (e.g. `"pterodactyl"`). Mirrors and older builds do
+ *     set `obstacle.type` (`"PTERODACTYL"`). `readState()` reads both; this map only
+ *     normalises the string once it has been found.
+ *  2. **How the name is spelled.** Chromium's own names are camelCase with no
+ *     separator (`cactusSmall`), so uppercasing them yields `CACTUSSMALL` - *not*
+ *     `CACTUS_SMALL`, which is the key used throughout this file. The underscore-free
+ *     keys below are therefore deliberate, not typos: they are what `canonicalType()`
+ *     actually receives. `PTERODACTYL` needs no entry; it is already its own key.
+ *
+ * Note the pterodactyl's `yPos` is `[100, 75, 50]` on both shapes, so the three-height
+ * reading in the header comment describes the classic build; classification does not
+ * depend on how many heights a build offers, because it reads the collision boxes.
  */
 export const TYPE_ALIASES = {
+  // Classic mirrors, which name the obstacle directly.
   SMALL_CACTUS: 'CACTUS_SMALL',
   LARGE_CACTUS: 'CACTUS_LARGE',
   SMALL_CACTUS_GROUP: 'CACTUS_SMALL',
   LARGE_CACTUS_GROUP: 'CACTUS_LARGE',
+  // Chromium's own `typeConfig.type` names, uppercased by `canonicalType`.
+  CACTUSSMALL: 'CACTUS_SMALL',
+  CACTUSLARGE: 'CACTUS_LARGE',
 };
 
 /** Normalise an obstacle `type` string to a key of {@link OBSTACLE_TYPES}. */

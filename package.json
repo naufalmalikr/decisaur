@@ -9,7 +9,8 @@
     "proxy": "node scripts/cors-proxy.mjs",
     "replay": "node src/node/replay.js",
     "sim": "node src/node/run-sim.js",
-    "bench": "node src/node/bench-gpu.js"
+    "bench": "node src/node/bench-gpu.js",
+    "probe-perception": "node src/node/probe-perception.js"
   },
   "dependencies": {
     "ollama": "^0.6.4"

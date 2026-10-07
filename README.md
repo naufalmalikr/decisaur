@@ -182,6 +182,7 @@ node src/node/probe-maneuver.js      # why one 3-way maneuver question cannot wo
 node src/node/probe-decompose.js     # why the question is split in two, and why L
 node src/node/probe-wording.js       # why the yPos 75 description is load-bearing
 node src/node/probe-latency.js       # latency vs question count
+npm run probe-perception             # obstacle shapes: classic, current Chromium, typeless
 npm run bench                        # GPU throughput vs the load the loop applies
 ```
 
@@ -222,6 +223,7 @@ src/
     probe-decompose.js   the split question, 4 framings (L is production)
     probe-wording.js     the yPos 75 description, 4 wordings
     probe-latency.js     latency vs question count
+    probe-perception.js  readState -> analyse -> describeObstacle across obstacle shapes
     bench-gpu.js         concurrency + System One benchmark
 scripts/build.mjs        esbuild -> dist/*.user.js
 scripts/cors-proxy.mjs   127.0.0.1:11436 -> Ollama, Origin stripped

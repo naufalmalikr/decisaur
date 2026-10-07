@@ -27,7 +27,6 @@
  */
 
 import { CLEARANCE_MARGIN, FPS, jumpProfile, obstacleExtent, trexExtent } from './geometry.js';
-import { isAirborneType } from './constants.js';
 
 /**
  * @typedef {object} Analysis
@@ -73,7 +72,9 @@ export function analyse(state, obstacle, centreDistance, closingSpeed) {
   // above the obstacle's highest one.
   const requiredRise = standing.bottom - ext.top + CLEARANCE_MARGIN;
 
-  const airborne = isAirborneType(obstacle.type);
+  // `canonical` rather than `type`: the raw name is camelCase on Chromium and upper
+  // snake on mirrors, and only the normalised key is safe to compare against.
+  const airborne = obstacle.canonical === 'PTERODACTYL';
   const known = airborne || obstacle.boxes !== undefined || obstacle.knownType === true;
 
   const jumpFeasible = apex >= requiredRise;

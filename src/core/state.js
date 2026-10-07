@@ -29,13 +29,13 @@ export class Tokeniser {
   }
 
   /** @param {{xPos: number, type: string, yPos: number}} obstacle */
-  tokenFor(obstacle) {
+  tokenFor(obstacle, typeName) {
     const x = obstacle.xPos;
     const previous = this.seen.get(obstacle);
 
     if (previous === undefined || x > previous.lastX + 0.5) {
       this.counter += 1;
-      const token = `${canonicalType(obstacle.type)}:${Math.round(obstacle.yPos)}:${this.counter}`;
+      const token = `${canonicalType(typeName)}:${Math.round(obstacle.yPos)}:${this.counter}`;
       this.seen.set(obstacle, { token, lastX: x });
       return token;
     }
@@ -51,9 +51,11 @@ export class Tokeniser {
 }
 
 /**
- * @typedef {object} ObstacleView
+* @typedef {object} ObstacleView
  * @property {string} token       Stable id for this obstacle instance.
- * @property {string} type        The game's own type string.
+ * @property {string} type       The game's own type string, or `'UNKNOWN'` when the
+ *   build exposes none. CamelCase on Chromium (`'pterodactyl'`), upper snake on
+ *   mirrors (`'PTERODACTYL'`); `canonical` is the normalised key to compare on.
  * @property {string} canonical   Type normalised across Chromium and mirror builds.
  * @property {number} x
  * @property {number} y
@@ -108,9 +110,31 @@ function toTuples(boxes) {
 }
 
 /**
+ * Read the obstacle's own type name, whichever build it came from.
+ *
+ * Current Chromium puts no type string on the obstacle at all: the class lives only
+ * on `typeConfig.type` (`"pterodactyl"`, `"cactusSmall"`), and `obstacle.type` reads
+ * `undefined` forever. Mirrors and older builds set `type` directly. Reading only
+ * `type` therefore mislabels *every* obstacle as `UNKNOWN`, which flips `airborne`
+ * to false for birds - and a bird described to the model as a cactus standing on the
+ * ground is jumped, never bowed, because the "go underneath" rule is only reachable
+ * from a sentence this code would then never send. Measured on live Chromium 2026:
+ * `'type' in obstacle` is `false`.
+ *
+ * `typeConfig` wins when both are present, because it is the one the live
+ * `Obstacle` constructor was handed and therefore cannot drift from.
+ *
+ * @param {any} raw
+ * @returns {string}
+ */
+function obstacleTypeName(raw) {
+  return String(raw?.typeConfig?.type ?? raw?.type ?? '');
+}
+
+/**
  * Read the current state out of a `Runner` instance.
  *
- * @param {any} runner The live `Runner.instance_`.
+ * @param {any} runner The live `Runner.instance_` or the simulator's stand-in.
  * @param {Tokeniser} tokeniser
  * @returns {BotState}
  */
@@ -125,20 +149,21 @@ export function readState(runner, tokeniser) {
     // Cleared obstacles linger until they scroll off the left edge.
     if (raw.xPos + num(raw.width) < 0) continue;
 
-    const canonical = canonicalType(raw.type);
+    const typeName = obstacleTypeName(raw);
+    const canonical = canonicalType(typeName);
     const knownType = canonical in OBSTACLE_TYPES;
     const boxes = toTuples(raw.collisionBoxes) ?? OBSTACLE_TYPES[canonical]?.boxes;
 
     obstacles.push({
-      token: tokeniser.tokenFor(raw),
-      type: String(raw.type ?? 'UNKNOWN'),
+      token: tokeniser.tokenFor(raw, typeName),
+      type: String(typeName === '' ? 'UNKNOWN' : raw?.type ?? typeName),
       canonical,
       x: num(raw.xPos),
       y: num(raw.yPos, TREX.GROUND_Y),
       width: num(raw.width),
       height: num(raw.height),
       right: num(raw.xPos) + num(raw.width),
-      airborne: isAirborneType(raw.type),
+      airborne: isAirborneType(typeName),
       boxes,
       knownType,
       speedOffset: num(raw.speedOffset),
