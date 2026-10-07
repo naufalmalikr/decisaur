@@ -79,6 +79,18 @@ import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE, LOOP } from '../config.js';
  * variant K of the probe, which had the same decomposition with a neutral `clear`
  * question, scored 3/5 and never picked `bow`, while this wording scored 5/5.
  *
+ * The rules must also cover every scene shape `vocabulary.js` can send, because the
+ * model answers only from the rule that names its sentence's own words. With the
+ * first two rules alone, a body-height bird - sent as *"at the same height as the
+ * runner"*, the yPos 100 scene - was covered by neither rule, and the model guessed
+ * `bow`: it slid underneath a bird it had to clear, which is the crash that followed
+ * the perception fix once bird sentences first reached the model at all. Adding the
+ * third rule, quoting the description's own phrase, flips `bird_body@130` from
+ * `bow` 3/3 wrong to `jump` 3/3 right with no movement on any other scene
+ * (A/B over 8 scenes x 3 repeats). Phrasing the rule in the description's words is
+ * the same load-bearing trick as "above the runner" for yPos 75 - see the comment
+ * in `../core/vocabulary.js`.
+ *
  * `criteria` doubles as the label space, so both entries are written to describe the
  * situation each maneuver is for rather than to order the model.
  * 
@@ -95,7 +107,9 @@ export const QUESTIONS = {
     type: 'choice',
     instructions:
       'A man runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
-      'Anything standing on the ground must be jumped. A bird flying above the runner must be bowed under.',
+      'A cactus standing on the ground must be jumped.\n' +
+      'A bird flying above the runner must be bowed under.\n' +
+      'A bird flying at the same height as the runner must be jumped.',
     criteria: {
       jump: 'Jump: go over the top of it.',
       bow: 'Bow: shrink down and go underneath it.',

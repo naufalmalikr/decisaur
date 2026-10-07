@@ -425,6 +425,24 @@ scene from wrong to right, and `npm run replay` from 66.7% to 73.3%.
 
 `node src/node/probe-wording.js` reproduces the comparison across four wordings.
 
+### The body-height bird rule
+
+The same trap from the other side, and the sequel to the Chromium perception fix. Once
+bird sentences first reached the model at all, the yPos 100 bird arrived as *"A bird is
+flying at the same height as the runner"* — a phrase neither of the two rules named
+("standing on the ground" covers cacti, "flying above the runner" covers yPos 50-75).
+Answering only from the rule that matches its sentence's words, the model had no rule to
+match and guessed `bow`: it slid underneath a bird whose extent (108-127) blocks both the
+standing and the bowing dino, and the dino that had just learned to duck now ducked into
+the one bird it had to clear.
+
+The fix is a third rule quoting the description's own phrase — *"A bird flying at the same
+height as the runner must be jumped"* — measured A/B over 8 scenes x 3 repeats: `bird_body@130`
+flips from `bow` 3/3 wrong to `jump` 3/3 right with no movement on any other scene. The
+standing rule for this file: **every phrase `describeObstacle()` can send must be named by
+exactly one rule in `QUESTIONS.clear`**, and the rule must use the description's words, not
+synonyms for them.
+
 ---
 
 ## 7. Build modes
@@ -741,6 +759,7 @@ cited locations carry the detail.
 | Obstacle objects are pooled and recycled, so object identity is not a durable id | `Tokeniser` rotates the token when `xPos` increases |
 | The singleton is behind `Runner.getInstance()`, and `Runner` is a lexical binding, not a `window` property | `Agent.runner()` handles all three shapes |
 | **Current Chromium puts no type string on `Obstacle` at all** — the class lives on `obstacle.typeConfig.type` (`"pterodactyl"`, camelCase), so `obstacle.type` is `undefined` forever | `readState()` reads `typeConfig.type` first; `TYPE_ALIASES` uppercases the camelCase names. Reading only `type` labelled every bird a ground cactus, so every bird was sent to the model as *"A large cactus is standing on the ground"* — and the "must be jumped" rule answered all of them with `jump`. No bird sentence was ever sent, `bow` was unreachable, and the dino never ducked. `sim.js` builds obstacles in the classic shape, so no harness could see it: `probe-perception.js` pins all three shapes |
+| **The body-height bird had no covering rule** — the sequel to the row above: once bird sentences reached the model, *"at the same height as the runner"* (yPos 100, extent 108-127, blocks standing and bowing alike) matched neither `clear` rule, and the model guessed `bow` — the dino that had just learned to duck now ducked into the one bird it must jump | a third rule in `QUESTIONS.clear` quoting the description's own phrase; A/B measured in §6 "The body-height bird rule". Rule of thumb: every phrase `describeObstacle()` can send needs exactly one rule naming it |
 | `CollisionBox` instances vs plain tuples | `toTuples()` handles both; without the tuple branch, bow feasibility silently dies |
 | Chrome refuses `fetch` into loopback from a non-secure-context page, before anything reaches the network | launch flag, or serve from `http://localhost` |
 | Ollama 403s any request whose `Origin` it does not allow, and `Origin: null` is never allowed | `cors-proxy.mjs` drops `Origin` upstream |
