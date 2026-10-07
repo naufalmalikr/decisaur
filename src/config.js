@@ -20,22 +20,6 @@ export const DEFAULT_MODEL = 'tev1:0.8b';
 /** Keep the model resident; cold start costs ~300ms before the first answer. */
 export const KEEP_ALIVE = '10m';
 
-/**
- * Confidence gate for the model's opinion.
- *
- * Measured on `tev1:0.8b` for obstacle classification:
- *   cactus -> confidence 0.99, bird_high -> 0.74, bird_low -> 0.28.
- * The ambiguous low-bird case is genuinely under-determined by a sentence about
- * the scene, so the gate sits below it and lets `bird_low` through while still
- * rejecting flat distributions from out-of-distribution scenes.
- */
-export const POLICY = {
-  /** Minimum probability on the chosen class to override the reflex layer. */
-  minProbability: 0.5,
-  /** Minimum reported concentration to override the reflex layer. */
-  minConfidence: 0.2,
-};
-
 /** Perception and actuation cadence. */
 export const LOOP = {
   /**

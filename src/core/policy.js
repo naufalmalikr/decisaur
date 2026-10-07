@@ -1,180 +1,77 @@
 /**
  * Decision policy: the seam between what the model perceives and what the dino does.
  *
- * The model is asked one question per obstacle and takes ~100-260ms to answer,
- * while the game runs at 60Hz and the dino dies on contact. So the model never
- * gets the last word on its own. Its class must:
+ * The model is asked which maneuver clears the obstacle and whether it needs acting on
+ * yet, and it takes ~260-370ms to answer while the game runs at 60Hz and the dino dies
+ * on contact. So the question of whether its answer is allowed to act has to be asked
+ * explicitly, and the honest answer here is that **it is not gated at all**.
  *
- *  - name a class the vocabulary knows;
- *  - imply a maneuver that collision geometry says is feasible;
- *  - clear a probability and concentration gate.
+ * That is a measured decision, not an oversight. The decomposed question set in
+ * `../ollama/decider.js` reports a `clear` confidence of 0.000-0.054 on answers that
+ * are *correct*, with per-class probabilities as flat as `duck 0.51 / jump 0.49`. This
+ * model can name the right maneuver and has no idea how sure it is. Every gate that
+ * existed for the obstacle-class question - a per-class confidence floor, a probability
+ * floor, a geometry veto - was calibrated against a signal that scored 0.28-0.99, and
+ * none of them would survive contact with this one. They would reject nearly every
+ * answer, including the correct ones, and the feature would appear to work while never
+ * firing.
  *
- * Anything else falls through to the reflex layer, with the reason recorded so the
- * HUD shows exactly how often the model is overruled and why.
+ * So `resolveManeuver()` gives the model sole authority over the action, and the
+ * reflex layer is left with exactly one job: to act while there is no answer yet. That
+ * is not a cosmetic fallback - at ~370ms against a ~600ms perception range, most of
+ * every approach has no model opinion available.
  *
- * `resolveModelOnly()` is the control that measures what those gates are worth.
- * It maps the model's class straight to an action with none of the checks above -
- * no confidence floor, no probability gate, no geometry veto, and no check that
- * the reflex has armed a jump window - so the model can be flown as the sole
- * pilot. It exists to answer "what would the model alone manage?", and the crash
- * it produces is the measurement, not a fault to fix.
- *
- * Worth being blunt about what this project can and cannot show: because the
- * correct maneuver is fully determined by the game's own collision boxes, a
- * perfect classifier adds nothing to the score. What the model can do is make a
- * mistake, and the whole point of the gate plus `decisaur.reflexOnly()` is that
- * its mistakes are measurable and survivable. The HUD scores every
- * classification against the geometric reference so the claim can be checked
- * rather than believed.
+ * What this costs is stated plainly rather than discovered later: the model can now be
+ * wrong, and nothing catches it. `PolicyStats.scoreManeuver()` scores every decision
+ * against the maneuver collision geometry says is survivable, so the error rate is a
+ * measured number in the HUD and in `npm run replay` rather than a surprise. Expect it
+ * to be poor. `npm run sim -- --model --fps 60` is the headless version of the same
+ * measurement, and it dies.
  */
-
-import { POLICY as DEFAULT_POLICY } from '../config.js';
-import { isClass } from './vocabulary.js';
-
-/**
- * The maneuver each class implies.
- *
- * A lookup, not a decision. The interesting question - high bird or low bird - is
- * the one the model is actually being asked.
- */
-export const CLASS_TO_ACTION = {
-  cactus: 'jump',
-  bird_low: 'jump',
-  bird_high: 'duck',
-};
-
-/**
- * Confidence floors per class, calibrated from measured `tev1:0.8b` output.
- *
- * The model is deterministic for a given prompt, so these come from repeated
- * sampling:
- *
- *   cactus    confidence 0.995   probability 1.00
- *   bird_high confidence 0.860   probability 0.97
- *   bird_low  confidence 0.317   probability 0.65
- *
- * `bird_low` is the hard call and the model knows it, splitting its remaining mass
- * between the two bird classes rather than committing. Guessing wrong there is
- * fatal, so birds carry a higher floor than cacti - but not higher than
- * `bird_low` actually scores, or the floor would veto a correct answer.
- *
- * Uninformative prompts measured around confidence 0.08-0.18, so anything at or
- * above 0.2 carries real signal.
- */
-export const CLASS_MIN_CONFIDENCE = {
-  cactus: 0.2,
-  bird_high: 0.25,
-  bird_low: 0.25,
-};
 
 /**
  * @typedef {object} Resolution
  * @property {'jump'|'duck'|'hold'} action
  * @property {'model'|'reflex'} source
  * @property {string} reason
- * @property {string} [class]
+ * @property {string} [clearance] What the model's `clear` question chose.
  */
 
 /**
+ * The model's maneuver, unchecked.
+ *
+ * Only two things can stop it, and neither is a gate on its opinion:
+ *
+ *  - **No answer yet.** The obstacle is visible for ~600ms and the model needs ~370ms
+ *    to reply, so a large fraction of every approach is served by the reflex. That is
+ *    the reflex's remaining job and the only reason it survives.
+ *  - **A failed or nonsensical answer.** An unreachable Ollama, or a response where
+ *    neither question parsed, has no opinion to act on and falls back.
+ *
+ * Note what is *not* consulted: the geometric reference. The model's maneuver is not
+ * compared against `analysis.preferred`, because comparing them and then preferring the
+ * model's answer is not a gate - it is decoration, and it would produce the false
+ * impression that geometry is checking the model.
+ *
  * @param {object} params
- * @param {import('../ollama/decider.js').ClassDecision|null|undefined} params.decision
- * @param {import('./classify.js').Analysis} params.analysis
- * @param {'jump'|'duck'|'hold'} params.reflexAction
- * @param {typeof DEFAULT_POLICY} [params.policy]
+ * @param {import('../ollama/decider.js').ManeuverDecision|null|undefined} params.decision
+ * @param {'jump'|'duck'|'hold'} params.reflexAction  Serves as the answer until one arrives.
  * @returns {Resolution}
  */
-export function resolve({ decision, analysis, reflexAction, policy = DEFAULT_POLICY }) {
-  const defer = (reason) => ({ action: reflexAction, source: 'reflex', reason });
-
-  if (!decision) return defer('no model decision yet');
-  if (decision.error) return defer(`model query failed: ${decision.error}`);
-
-  const { kind, probability, confidence } = decision;
-
-  if (!isClass(kind)) {
-    return defer(`model named unknown class "${kind || 'none'}"`);
-  }
-
-  // When geometry cannot classify the obstacle at all, the model is the only
-  // source of a class we have, so it is allowed to lead.
-  if (analysis.uncertain) {
-    return {
-      action: CLASS_TO_ACTION[kind],
-      source: 'model',
-      reason: `geometry could not classify, model says ${kind}`,
-      class: kind,
-    };
-  }
-
-  const floor = CLASS_MIN_CONFIDENCE[kind] ?? policy.minConfidence;
-  if (confidence < floor) {
-    return defer(`model unsure about ${kind} (confidence ${confidence.toFixed(3)} < ${floor})`);
-  }
-  if (probability < policy.minProbability) {
-    return defer(`model ${kind} only ${(probability * 100).toFixed(0)}%`);
-  }
-
-  if (analysis.geometric !== null && analysis.geometric !== kind) {
-    return defer(`model says ${kind}, collision boxes say ${analysis.geometric}`);
-  }
-
-  const implied = CLASS_TO_ACTION[kind];
-  if (!analysis.feasible.has(implied)) {
-    const options = [...analysis.feasible].join('/') || 'nothing';
-    return defer(`model says ${kind} (${implied}) but geometry allows ${options}`);
-  }
-
-  // Timing is not the model's to decide. A jump is only survivable inside the
-  // clearance window geometry computes; letting the model also trigger it makes
-  // the dino leap when the round trip completes rather than when the cactus
-  // arrives, and land on it - which is how `--oracle` and `--adversarial` both
-  // died within a second. Ducking and holding have no arc, so they stay offered.
-  if (implied === 'jump' && reflexAction !== 'jump') {
-    return defer(`model wants jump but the window is not open (reflex ${reflexAction})`);
+export function resolveManeuver({ decision, reflexAction }) {
+  if (!decision) return { action: reflexAction, source: 'reflex', reason: 'no model decision yet' };
+  if (decision.error) return { action: reflexAction, source: 'reflex', reason: `model query failed: ${decision.error}` };
+  if (decision.clearance === '') {
+    return { action: reflexAction, source: 'reflex', reason: 'model named no usable maneuver' };
   }
 
   return {
-    action: implied,
+    action: decision.maneuver,
     source: 'model',
-    reason: `model ${kind} -> ${implied} @ ${(probability * 100).toFixed(0)}% (conf ${confidence.toFixed(2)})`,
-    class: kind,
-  };
-}
-
-/**
- * Resolve the model's answer with the model as the sole pilot.
- *
- * Deliberately skips every gate `resolve()` applies: no confidence floor, no
- * probability gate, no geometry veto, no feasibility check, and no requirement
- * that the reflex has armed a jump window. The reflex action is not consulted at
- * all, so there is nothing to defer to - the only safe fallback left is `hold`.
- *
- * There is no path through here where the reflex action is returned, which is the
- * point: this measures what the model alone can do, crash included. What it does
- * keep is the error handling - a missing, failed, or unclassifiable answer is a
- * `hold` with a reason, not an exception, because the game loop must not throw.
- *
- * @param {object} params
- * @param {import('../ollama/decider.js').ClassDecision|null|undefined} params.decision
- * @param {string|null} [params.geometric] The collision-geometry class, echoed for the record only.
- * @returns {Resolution}
- */
-export function resolveModelOnly({ decision, geometric = null }) {
-  if (!decision) return { action: 'hold', source: 'reflex', reason: 'no model decision yet' };
-  if (decision.error) return { action: 'hold', source: 'reflex', reason: `model query failed: ${decision.error}` };
-
-  const { kind } = decision;
-  if (!isClass(kind)) {
-    return { action: 'hold', source: 'reflex', reason: `model named unknown class "${kind || 'none'}"` };
-  }
-
-  return {
-    action: CLASS_TO_ACTION[kind],
-    source: 'model',
-    reason: geometric === null
-      ? `model ${kind} -> ${CLASS_TO_ACTION[kind]}, no geometric reference`
-      : `model ${kind} -> ${CLASS_TO_ACTION[kind]} (geometry says ${geometric})`,
-    class: kind,
+    reason:
+      `${decision.clearance} @ p=${decision.probability.toFixed(2)} conf=${decision.confidence.toFixed(2)}, ` +
+      `urgent=${Number.isFinite(decision.urgent) ? decision.urgent.toFixed(2) : 'n/a'} -> ${decision.maneuver}`,
+    clearance: decision.clearance,
   };
 }
 
@@ -201,13 +98,18 @@ export class PolicyStats {
   }
 
   /**
-   * Score the model against the collision-geometry reference.
+   * Score the model's maneuver against the geometric reference.
    *
-   * @param {string|null} predicted
-   * @param {string|null} truth
+   * This is the only check the model's opinion ever gets, and it happens after the
+   * fact rather than before: the answer has already been acted on by the time it is
+   * scored. That is the deliberate cost of removing the gate, and this is what makes
+   * it visible instead of silent.
+   *
+   * @param {'jump'|'duck'|'hold'} predicted
+   * @param {'jump'|'duck'|'hold'|null} truth
    */
-  scoreClassification(predicted, truth) {
-    if (predicted === null || truth === null) return;
+  scoreManeuver(predicted, truth) {
+    if (truth === null) return;
     if (predicted === truth) this.correct += 1;
     else {
       this.wrong += 1;
@@ -225,8 +127,8 @@ export class PolicyStats {
       modelShare: total === 0 ? 0 : this.model / total,
       correct: this.correct,
       wrong: this.wrong,
-      classificationAccuracy: scored === 0 ? null : this.correct / scored,
-      classified: scored,
+      maneuverAccuracy: scored === 0 ? null : this.correct / scored,
+      scored,
       topReasons: [...this.reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4),
     };
   }

@@ -58,14 +58,19 @@ export class Hud {
       lines.push(`obstacle  ${analysis.geometric ?? 'unknown'}  w${plan.target.width} y${plan.target.y}`);
       lines.push(`  gap    ${plan.centreDistance.toFixed(0)}px   ttc ${plan.timeToContactMs.toFixed(0)}ms`);
 
-      const model = view.modelClass;
       let verdict = `${DIM}model  -${''}`;
-      if (model !== null) {
-        const agree = model === analysis.geometric;
-        verdict = agree ? `model  ${model}  ${GOOD}ok${''}` : `model  ${model}  ${BAD}!=${analysis.geometric}${''}`;
+      if (view.modelManeuver !== null) {
+        const agree = view.modelManeuver === analysis.preferred;
+        verdict = agree
+          ? `model  ${view.modelManeuver}  ${GOOD}ok${''}`
+          : `model  ${view.modelManeuver}  ${BAD}!=${analysis.preferred}${''}`;
       }
       lines.push(verdict);
-      if (view.modelConfidence > 0) lines.push(`  conf  ${view.modelConfidence.toFixed(3)}  p ${view.modelProbability.toFixed(2)}`);
+      lines.push(
+        `  clear ${view.modelClearance ?? '-'}  ` +
+          `urgent ${Number.isFinite(view.modelUrgent) ? view.modelUrgent.toFixed(2) : '-'}`,
+      );
+      lines.push(`  conf  ${view.modelConfidence.toFixed(3)}  p ${view.modelProbability.toFixed(2)}`);
 
       lines.push(`  need +${analysis.requiredRise.toFixed(0)}px rise, apex +${analysis.apex.toFixed(0)}px`);
       lines.push(`  feasible  ${[...analysis.feasible].join('/')}  prefer ${analysis.preferred}`);
@@ -82,12 +87,14 @@ export class Hud {
     const share = s.total === 0 ? '-' : `${Math.round((s.model / s.total) * 100)}%`;
     lines.push(`model ${s.model}  ${view.reflexLabel ?? 'reflex'} ${s.reflex}  ${DIM}model share ${share}${''}`);
 
-    if (s.classificationAccuracy === null) {
-      lines.push(`${DIM}class accuracy n/a${''}`);
-    } else if (s.classificationAccuracy === 1) {
-      lines.push(`class accuracy ${GOOD}${(s.classificationAccuracy * 100).toFixed(1)}%${''} ${DIM}(${s.classified})${''}`);
+    if (s.maneuverAccuracy === null) {
+      lines.push(`${DIM}maneuver accuracy n/a${''}`);
+    } else if (s.maneuverAccuracy === 1) {
+      lines.push(`maneuver accuracy ${GOOD}${(s.maneuverAccuracy * 100).toFixed(1)}%${''} ${DIM}(${s.scored})${''}`);
     } else {
-      lines.push(`class accuracy ${BAD}${(s.classificationAccuracy * 100).toFixed(1)}%${''} ${DIM}(${s.classified}, ${s.wrong} wrong)${''}`);
+      lines.push(
+        `maneuver accuracy ${BAD}${(s.maneuverAccuracy * 100).toFixed(1)}%${''} ${DIM}(${s.scored}, ${s.wrong} wrong)${''}`,
+      );
     }
 
     if (view.decider && view.decider.stats.queries > 0) {

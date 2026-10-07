@@ -65,25 +65,40 @@ class ScriptedDecider {
   /**
    * @param {string} token
    * @param {string} state Sentence describing the scene.
+   * @param {'far'|'near'} band Which approach phase is being asked about.
    */
-  async request(token, state) {
+  async request(token, state, band = 'near') {
     if (this.decisions.has(token)) return this.decisions.get(token);
     this.inFlight += 1;
 
+    // The far band is the whole scene at long range, where "wait" is correct and no
+    // collision geometry has been consulted yet. Only the near band carries the
+    // decision, which is what makes the oracle an oracle.
+    if (band === 'far') {
+      this.inFlight -= 1;
+      return null;
+    }
+
     const seesBird = state.includes('pterodactyl');
-    const truth = seesBird ? 'bird' : 'cactus';
-    let kind;
+    const overhead = state.includes('well above the runner') || state.includes('above the runner,');
+    const close = state.includes('very close') || state.includes('close ahead');
+    let maneuver;
     if (this.strategy === 'oracle') {
-      kind = truth === 'cactus' ? 'cactus' : state.includes('high in the air') || state.includes('head height') ? 'bird_high' : 'bird_low';
+      if (!close) maneuver = 'hold';
+      else if (!seesBird) maneuver = 'jump';
+      else maneuver = overhead ? 'duck' : 'jump';
     } else {
       // Always claims the worst thing it can, with total confidence.
-      kind = truth === 'cactus' ? 'bird_low' : 'bird_high';
+      maneuver = seesBird ? 'jump' : 'duck';
     }
 
     const decision = {
-      kind,
+      maneuver,
+      clearance: 'jump',
+      urgent: maneuver === 'hold' ? 0.1 : 0.9,
+      isUrgent: maneuver !== 'hold',
       probability: 0.99,
-      distribution: { [kind]: 0.99 },
+      distribution: { [maneuver]: 0.99 },
       confidence: 0.99,
       latencyMs: 1,
       usage: { input_tokens: 0, output_tokens: 0 },
@@ -149,11 +164,11 @@ for (let run = 0; run < args.runs; run += 1) {
   let jumps = 0;
   let ducks = 0;
   /**
-   * One reference row per queried obstacle: the model's pick next to the class
-   * collision geometry derived for the same token. Decisions are pruned as
+   * One reference row per queried obstacle: the model's maneuver next to the one
+   * collision geometry would have given for the same token. Decisions are pruned as
    * obstacles scroll away, so they are captured here while still visible.
    *
-   * @type {{kind: string|null, geometric: string|null}[]}
+   * @type {{maneuver: string, clearance: string|null, urgent: number, preferred: string|null}[]}
    */
   const queries = [];
   /** @type {Set<string>} */
@@ -184,7 +199,12 @@ for (let run = 0; run < args.runs; run += 1) {
       const { token } = decision.plan.target;
       if (!snapshotted.has(token)) {
         snapshotted.add(token);
-        queries.push({ kind: decision.modelDecision.kind || null, geometric: decision.plan.analysis?.geometric ?? null });
+        queries.push({
+          maneuver: decision.modelDecision.maneuver,
+          clearance: decision.modelDecision.clearance || null,
+          urgent: decision.modelDecision.urgent,
+          preferred: decision.plan.analysis?.preferred ?? null,
+        });
       }
     }
 
@@ -210,8 +230,8 @@ for (let run = 0; run < args.runs; run += 1) {
     spawned: sim.spawned,
     model: stats.model,
     reflex: stats.reflex,
-    accuracy: stats.classificationAccuracy,
-    classified: stats.classified,
+    accuracy: stats.maneuverAccuracy,
+    classified: stats.scored,
     crashType: detail?.type ?? '-',
     crashY: detail?.yPos ?? '-',
     crashState: detail ? `${detail.jumping ? 'airborne' : detail.ducking ? 'ducking' : 'running'}` : '-',
@@ -231,7 +251,9 @@ for (let run = 0; run < args.runs; run += 1) {
   }
   console.log(
     `        jumps ${jumps}  ducks ${ducks}  decisions: model ${stats.model} / ${args.noReflex ? 'unanswered' : 'reflex'} ${stats.reflex}` +
-      (stats.classificationAccuracy === null ? '' : `  class accuracy ${(stats.classificationAccuracy * 100).toFixed(1)}% (${stats.classified})`),
+      (stats.maneuverAccuracy === null
+        ? ''
+        : `  maneuver accuracy ${(stats.maneuverAccuracy * 100).toFixed(1)}% (${stats.scored})`),
   );
 
   // Model-only runs print every query's pick next to the geometric reference, so
@@ -239,8 +261,12 @@ for (let run = 0; run < args.runs; run += 1) {
 if (args.noReflex && decider !== null) {
     for (let i = 0; i < queries.length; i += 1) {
       const q = queries[i];
-      const disagree = q.geometric !== null && q.kind !== q.geometric;
-      console.log(`        query ${i + 1}: model ${q.kind ?? '-'} vs geometric ${q.geometric ?? '-'}${disagree ? '  <- disagree' : ''}`);
+      const urgent = Number.isFinite(q.urgent) ? q.urgent.toFixed(2) : '-';
+      const disagree = q.preferred !== null && q.maneuver !== q.preferred;
+      console.log(
+        `        query ${i + 1}: model ${q.maneuver} (clear ${q.clearance ?? '-'} urgent ${urgent})` +
+          ` vs geometry ${q.preferred ?? '-'}${disagree ? '  <- disagree' : ''}`,
+      );
     }
   }
 }

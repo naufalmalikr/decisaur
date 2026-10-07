@@ -16,47 +16,68 @@ that is measurable rather than asserted.**
 
 ## The short version
 
-Three layers, each with a job it is actually good at:
+The model chooses the maneuver. Geometry still chooses *when* a jump is pressed, and
+still fills the frames before the model has answered:
 
-| Layer | Question it answers | Latency | Measured accuracy |
+| Layer | Question it answers | Latency | Measured |
 |---|---|---|---|
-| **Model** (`tev1:0.8b`) | *what kind of obstacle is this?* | 67-280ms | **80%** (32/40) |
-| **Geometry** | *what can be done about it, and when?* | ~0 (per frame) | exact |
-| **Policy** | *is the model's opinion allowed to act?* | ~0 | — |
+| **Model** (`tev1:0.8b`) | *jump, duck, or hold?* | ~210ms | **~73%** maneuver accuracy |
+| **Geometry** | *when is a jump survivable, and what do we do meanwhile?* | ~0 (per frame) | exact |
+| **Policy** | *is the model's opinion allowed to act?* | ~0 | — nothing is gated |
 
-Geometry is what actually drives the dino. The model is asked once per obstacle,
-and its answer is checked against collision geometry before it is allowed to do
-anything.
+The model is asked one question per obstacle per approach phase: a `choice` between
+`jump` and `duck`, plus a `noul` on whether the obstacle needs acting on yet. `hold` is
+derived from the second, so it never competes for probability mass against the two
+maneuvers that press a key. That decomposition is the only framing that reached all
+three maneuvers on `tev1:0.8b` - a single three-way question latches onto whichever
+option is described most forcefully, and eleven attempts are tabulated in
+`src/ollama/decider.js`.
 
-### Why the model cannot win
+### The model cannot win, and now it can be shown crashing
 
-In this game the correct maneuver is fully determined by the game's own collision
-boxes. There is no judgement call, no trade-off, no strategy to infer. So a perfect
-classifier adds exactly nothing to the score, and a mediocre one can only hurt.
+The previous design asked the model for an obstacle *class* and gated its answer against
+collision geometry, which made a confidently-wrong model harmless: `--oracle` and
+`--adversarial` scored identically to reflex-only. That safety came from the gate, not
+from the model.
 
-Rather than pretend otherwise, the project measures it. `npm run sim` runs the same
-seeds three ways:
+This design removes the gate. `clear` reports confidence 0.000-0.054 on *correct*
+answers, with probabilities as flat as `duck 0.51 / jump 0.49` - this model can name the
+right maneuver and cannot tell you how sure it is, so any confidence floor rejects
+nearly everything including the right answers. There is nothing to gate with, and the
+consequence is measured rather than argued:
 
 ```
-reflex only     5/6 survived    score 5888
---oracle        5/6 survived    score 5888     model 100% accurate
---adversarial   5/6 survived    score 5888     model ~20% accurate, always confident
+reflex only     5/5 survived    score 5888
+--oracle        5/5 survived    score 5888    model ~90% maneuver accuracy
+--model         0/5 survived    score ~700    model ~73%, crashes into pterodactyls
+--adversarial   0/5 survived    score 13     model 0%, always confident
 ```
 
-Crash frames, scores and jump counts come out byte-identical across all three
-(same md5 over the run summary). An always-wrong, maximally-confident model
-changes nothing, because the policy layer refuses answers that disagree with
-geometry. That is the safety property, and it is demonstrated rather than claimed.
+Same seeds, 20000 frames each. The oracle still scores exactly what reflex scores, which
+is the project's original thesis holding: on this game the correct maneuver is fully
+determined by the game's own collision boxes, so a perfect decision-maker adds nothing
+to the score. Give the model sole authority over a bad decision-maker and it dies.
 
-The one place the model does move the needle is mild: it labels a bird that could
-simply be run under as `bird_high`, so the dino ducks when it did not need to
-(283 duck frames instead of 51 over 4000 frames). That is safe - ducking clears
-those birds - and the score is unchanged, but it is the model adding motion rather
-than accuracy. Worth knowing before reading too much into the agreement above.
+Two things make the difference between `--oracle` and `--model`, and both are the model's:
+it cannot reliably tell a duckable bird from a jumpable one, and its answer arrives too
+late to matter without the geometry layer timing the jump.
 
-The model still does something real: it is scored on every obstacle against the
-geometric reference, in the HUD and in `npm run replay`, and its one systematic
-error is visible rather than silent.
+### What the model gets wrong
+
+~73% over 20000-frame runs, and the error is concentrated rather than random: the
+failures are almost all pterodactyls. Where the model is wrong about a bird's height it
+either ducks something that must be jumped or runs into something it could have ducked.
+
+One scene dominated everything until it was found. `yPos 75` is duckable and was
+described to the model as being at "head height", which the clearance rules then said
+must be jumped - the model read the description correctly, followed the rule correctly,
+and died. Describing it as "above the runner" instead moved that scene from wrong to
+right. That string is load-bearing and the comment in `src/core/vocabulary.js` says so.
+
+The model is scored on every decision against what collision geometry would have done,
+in the HUD and in `npm run replay`, so its error rate is a number rather than an
+anecdote.
+
 
 ---
 
@@ -118,14 +139,14 @@ charge, decided at compile time - there is no runtime switch to get wrong.
 
 | File | Model | Reflex | For |
 |---|---|---|---|
-| `dist/decisaur.model-only.user.js` | sole pilot | off | seeing what the model does unaided |
+| `dist/decisaur.model-only.user.js` | decides, no pre-answer cover | off | seeing what the model does unaided |
 | `dist/decisaur.reflex-only.user.js` | never queried | on | the A/B baseline |
-| `dist/decisaur.user.js` | classifies | vetoes, owns timing | normal play |
+| `dist/decisaur.user.js` | decides | covers pre-answer frames, owns jump timing | normal play |
 
-Pick the file, paste it, done. The model-only build has no geometry veto and no
-timing help, so the dino dies the moment an answer is late or wrong - that is the
-experiment, and `npm run sim -- --no-reflex --model` measures the same thing
-headlessly (it dies around frame 89).
+Pick the file, paste it, done. In all three builds the geometry layer times the jump -
+the model's `jump` is armed and fired at the clearance window, never the frame its
+answer arrives. What the builds differ on is who decides, and what happens during the
+~210ms before the model has answered.
 
 Each bundle prints its own mode on attach, and `decisaur.mode` reports it.
 
@@ -144,7 +165,7 @@ Everything runs without a browser, against a port of the game's physics in
 [ARCHITECTURE.md §10](ARCHITECTURE.md#10-offline-harness).
 
 ```sh
-npm run replay                       # score the model against collision geometry
+npm run replay                       # score the model's maneuver against collision geometry
 npm run sim                          # reflex layer alone
 npm run sim -- --oracle              # model stands in for geometry
 npm run sim -- --adversarial         # model confidently wrong
@@ -157,35 +178,17 @@ model query ever completes, which looks like success while measuring nothing.
 
 ```sh
 node src/node/sweep-aim.js           # how JUMP_AIM was chosen
-node src/node/probe-prompt.js        # why the prompt asks for a class, not a maneuver
+node src/node/probe-maneuver.js      # why one 3-way maneuver question cannot work
+node src/node/probe-decompose.js     # why the question is split in two, and why L
+node src/node/probe-wording.js       # why the yPos 75 description is load-bearing
 node src/node/probe-latency.js       # latency vs question count
 npm run bench                        # GPU throughput vs the load the loop applies
 ```
 
----
+`npm run replay` asks every obstacle about at three distances, because the correct
+maneuver is a function of distance and not only of shape - a high bird 900px out wants
+`hold`, the same bird at 130px wants `duck`.
 
-## What the model gets wrong
-
-80% over 40 samples, and the error is systematic rather than random:
-
-| Scene | Model | Geometry | Outcome |
-|---|---|---|---|
-| cactus, small / large | `cactus` | `cactus` | jump |
-| bird at y=100 | **`bird_high`** | `bird_low` | **caught by the gate** -> jump |
-| bird at y=75 | `bird_high` | `bird_high` | duck |
-| bird at y=50 | `bird_high` | `bird_high` | duck |
-
-It reads a body-height bird as "high overhead" every single time. The gate catches
-all 8 of 8, the dino jumps correctly, and the HUD counts the mistake.
-
-The model is asked what it is *looking at* rather than what it should *do*, because
-that question measured both cheaper and sharper than asking for a maneuver, and
-because a sentence is scored far better than a JSON blob. The description
-deliberately never names the class or the collision extents - otherwise scoring the
-model against geometry would just be measuring an echo. The prompt, the encoding
-comparison behind it, and the swept `JUMP_AIM` value are in
-[ARCHITECTURE.md §6](ARCHITECTURE.md#6-model-transport) and
-[§4](ARCHITECTURE.md#4-geometry-and-classification).
 
 ---
 
@@ -199,11 +202,11 @@ src/
     geometry.js          jump arc, clearance windows, collision extents
     state.js             defensive BotState extraction from Runner.instance_
     classify.js          class + feasible maneuvers, from collision geometry
-    reflex.js            60Hz safety net
-    policy.js            model answer -> action, gated
+    reflex.js            60Hz geometry net; also owns jump timing
+    policy.js            model maneuver -> action, ungated by design
     controller.js        the pipeline; DOM-free
-    vocabulary.js        class space and the model-facing description
-  ollama/decider.js      System One client: dedup, one in flight, keep_alive
+    vocabulary.js        the model-facing scene description
+  ollama/decider.js      System One client: dedup per approach band, one in flight
   browser/
     agent.js             rAF loop + keyboard
     keys.js              synthetic keydown/keyup carrying keyCode
@@ -213,9 +216,11 @@ src/
   node/
     sim.js               headless port of the game
     run-sim.js           simulator CLI (reflex / oracle / adversarial / model)
-    replay.js            model accuracy harness
+    replay.js            maneuver accuracy harness, obstacle x distance
     sweep-aim.js         JUMP_AIM sweep
-    probe-prompt.js      prompt-encoding comparison
+    probe-maneuver.js    single 3-way maneuver question, 6 framings
+    probe-decompose.js   the split question, 4 framings (L is production)
+    probe-wording.js     the yPos 75 description, 4 wordings
     probe-latency.js     latency vs question count
     bench-gpu.js         concurrency + System One benchmark
 scripts/build.mjs        esbuild -> dist/*.user.js
@@ -231,32 +236,35 @@ responsibilities are in [ARCHITECTURE.md §4](ARCHITECTURE.md#modules).
 
 ## Limitations
 
-- **70% of seeds survive 30000 frames** (42/60 on seeds 3000-3059, mean score
-  ~7800); the rest die almost entirely to one case: the dino is still airborne
-  when the next obstacle needs a jump, and it lands after that obstacle's window
-  has already opened. Crash breakdown across those 18 failures - 14 airborne into
-  `CACTUS_LARGE`, 2 running into `CACTUS_LARGE`, 2 into a pterodactyl.
-  This is a limit of a jump-only strategy, not something the model addresses.
-  It was traced rather than papered over, and ArrowDown speed-drop does not fix it:
-  from the apex it descends *slower* than gravity alone (3px/frame against ~5px/frame
-  average), so cutting the jump short lands the dino later, not sooner.
-- **Chrome's pterodactyl has two heights, not three.** Some mirrors use three.
-  Classification reads `yPos` from the live game so both work, but the constants
-  table lists three.
+- **With the model deciding, the bot does not survive.** 0/5 seeds reach 20000 frames
+  against reflex-only's 5/5, and every crash is a pterodactyl. This is the honest
+  consequence of removing the policy gate: at ~73% maneuver accuracy, a quarter of the
+  decisions are wrong and a wrong answer at the wrong moment is fatal. The gate that used
+  to absorb this is gone because the new question reports no usable confidence to gate
+  on. `npm run replay` and the HUD count the mistakes; `--oracle` shows what a model
+  that were reliable would give, which is a score identical to reflex.
+- **Two queries per obstacle, not one.** A maneuver depends on distance: the right answer
+  at 460px is `hold` and at 230px it is `jump`. Asking once cached `hold` for the whole
+  approach and the dino ran into what it was told to wait for. `Decider` dedups per
+  `(token, band)` and the controller re-asks on entering the near band at 300px, which
+  is the most the ~210ms round trip allows at the game's top speed.
 - **The bot reads and writes `Runner` internals, which are not a public API.**
   Current Chrome has modularised them, and a sufficiently large rename would need
-  attention. See [ARCHITECTURE.md §8](ARCHITECTURE.md#agentrunner-three-shapes).
+  attention. See [ARCHITECTURE.md §8](ARCHITECTURE.md#8-agentrunner-three-shapes).
 - **Reaching Ollama from `chrome://dino` requires disabling a security check**, and
   the second, Ollama-side refusal always needs the proxy. Both are measured, and
   the proxy is not optional: dropping `Origin` upstream is what gets a `200` at all.
   Only the Chrome column depends on current Chrome behaviour - if the feature is
   renamed or the flag stops working, the flag-based setup breaks with it. See
   [ARCHITECTURE.md §9](ARCHITECTURE.md#9-the-two-refusals).
-- **With Ollama down or unreachable, the bot still plays.** This is the design
-  working, not a bug: the reflex layer is geometry-driven and synchronous, so it
-  never waits on a model round trip. The HUD then shows `model query failed` as the
-  reason and `model share 0%`, which is the honest report of a model that
-  contributed nothing that run.
+- **With Ollama down or unreachable, the bot falls back to geometry.** In the default
+  build the reflex covers every frame the model has not answered for, so the dino keeps
+  playing. The model-only build does not: it does nothing until an answer arrives. The
+  HUD shows `model query failed` and `model share 0%`, which is the honest report of a
+  model that contributed nothing that run.
+- **`yPos 75` is described to the model in words, not numbers, and the wording is
+  load-bearing.** "about head height" made the model jump a duckable bird and die; "above
+  the runner" fixed it. `node src/node/probe-wording.js` reproduces the comparison.
 
 Game internals - transcribed constants, which maneuver is actually possible, and
 the upstream typo that will silently break your jump - are collected in

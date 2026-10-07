@@ -8,15 +8,15 @@ platform constraints the code is shaped around. For install and usage, see
 
 ## 1. The shape of it
 
-Three layers, separated by what each is actually good at. The split is the whole
-design — the model is a good *perceiver* and a poor *tactician*, so it is asked only
-the question it answers well.
+Three layers. The model decides **what maneuver**; geometry decides **when a jump is
+pressed** and **what happens before the model answers**; the policy layer decides whether
+the model's opinion is allowed to act at all — which, for this question set, is no.
 
 | Layer | Question it answers | Latency | Reference |
 |---|---|---|---|
-| **Model** — `src/ollama/decider.js` | what kind of obstacle is this? | 67-280ms | measured, 80% (32/40) |
-| **Geometry** — `src/core/{classify,geometry,reflex}.js` | what can be done about it, and when? | ~0, per frame | exact |
-| **Policy** — `src/core/policy.js` | is the model's opinion allowed to act? | ~0 | — |
+| **Model** — `src/ollama/decider.js` | jump, duck, or hold? | ~210ms | measured, ~73% maneuver accuracy |
+| **Geometry** — `src/core/{classify,geometry,reflex}.js` | when is a jump survivable, and what do we do meanwhile? | ~0, per frame | exact |
+| **Policy** — `src/core/policy.js` | is the model's opinion allowed to act? | ~0 | nothing is gated (§3) |
 
 ```mermaid
 flowchart TD
@@ -31,12 +31,12 @@ flowchart TD
         ST["core/state.js<br/>readState → BotState"]
         RF["core/reflex.js<br/>plan → Plan<br/><i>geometry only</i>"]
         CL["core/classify.js<br/>analyse → Analysis"]
-        PO["core/policy.js<br/>resolve / resolveModelOnly"]
+        PO["core/policy.js<br/>resolveManeuver"]
     end
 
-    DEC["ollama/decider.js<br/>Decider<br/>dedup · 1 in flight"]
+    DEC["ollama/decider.js<br/>Decider<br/>dedup per band · 1 in flight"]
     GEO["core/geometry.js<br/>jumpProfile · clearanceWindow<br/>obstacleExtent · trexExtent"]
-    VOC["core/vocabulary.js<br/>describeObstacle → prompt text"]
+    VOC["core/vocabulary.js<br/>describeState → prompt text"]
     CN["core/constants.js<br/>transcribed game constants"]
     CFG["config.js<br/>shared tunables"]
 
@@ -88,21 +88,18 @@ sequenceDiagram
     R->>R: analyse() → feasible set + geometric class
     R-->>C: Plan { action, analysis, centreDistance }
 
-    alt target within perceptionRange, never asked
-        C->>D: request(token, sentence) — not awaited
+    alt target within perceptionRange, band not yet asked
+        C->>D: request(token, sentence, band) — not awaited
         D->>O: POST /v1/systemone
         Note over D,O: in flight, the frame continues
     end
 
     C->>D: get(token)
-    D-->>C: ClassDecision | undefined
-    C->>P: stats.scoreClassification(model, geometric)
-    alt useReflex = true
-        C->>P: resolve({ decision, analysis, reflexAction })
-    else model as sole pilot
-        C->>P: resolveModelOnly({ decision, geometric })
-    end
+    D-->>C: ManeuverDecision | undefined
+    C->>P: stats.scoreManeuver(model maneuver, reflex action)
+    C->>P: resolveManeuver({ decision, reflexAction })
     P-->>C: Resolution { action, source, reason }
+    Note over C,R: model says jump → armed, fired at the<br/>clearance window, never on arrival
     C-->>FE: Decision { action, ducking, source, reason, plan }
 ```
 
@@ -122,61 +119,62 @@ pipeline rather than in a front end, so both front ends inherit them:
 
 ---
 
-## 3. The policy gates
+## 3. The policy layer
 
-`resolve()` is a ladder of deferrals. Every gate that rejects hands the frame back to
-`reflexAction` and records a reason, so the HUD can show exactly how often the model is
-overruled and why.
+`resolveManeuver()` is not a ladder of gates. It applies none, and that is a measured
+decision rather than an omission.
+
+The model is asked two questions in one forward pass — `clear` (a `choice` between
+`jump` and `duck`) and `urgent` (a `noul` on whether to act now) — and `hold` is derived
+from `urgent`. What survives into the decision is `decision.maneuver`, full stop.
 
 ```mermaid
 flowchart TD
-    A["model decision"] --> B{"kind is a known class?"}
-    B -- no --> Z["defer → reflex"]
-    B -- yes --> C{"geometry could not classify?"}
-    C -- yes --> Y["model leads — allowed"]
-    C -- no --> D{"confidence ≥ per-class floor?"}
-    D -- no --> Z
-    D -- yes --> E{"probability ≥ 0.5?"}
-    E -- no --> Z
-    E -- yes --> F{"matches geometric class?"}
-    F -- no --> Z
-    F -- yes --> G{"implied maneuver feasible?"}
-    G -- no --> Z
-    G -- yes --> H{"jump, and is the window open?"}
-    H -- no --> Z
-    H -- yes --> X["model acts"]
+    A["model decision"] --> B{"error, or no usable clearance?"}
+    B -- yes --> Z["reflex covers the frame"]
+    B -- no --> Y["model maneuver acts"]
 ```
 
-| # | Gate | Code | Value |
+Two things can stop the model, and neither is a gate on its opinion:
+
+| # | Condition | Code | Behaviour |
 |---|---|---|---|
-| 1 | no decision yet | `policy.js:89` | defer |
-| 2 | query failed | `policy.js:90` | defer |
-| 3 | unknown class | `policy.js:94` | defer |
-| 4 | geometry uncertain | `policy.js:100` | **model leads** |
-| 5 | confidence floor | `policy.js:109` | cactus 0.2 · bird_high 0.25 · bird_low 0.25 |
-| 6 | probability floor | `policy.js:113` | `POLICY.minProbability` = 0.5 |
-| 7 | geometry veto | `policy.js:117` | class must equal `analysis.geometric` |
-| 8 | feasibility | `policy.js:122` | implied maneuver ∈ `analysis.feasible` |
-| 9 | jump-window timing | `policy.js:132` | jump only when `reflexAction === 'jump'` |
+| 1 | no answer yet | `policy.js` | reflex geometry acts |
+| 2 | query failed, or `clear` did not name `jump`/`duck` | `policy.js` | reflex geometry acts |
 
-Gate 4 is the one that inverts: when geometry cannot classify the obstacle at all, the
-model is the only source of a class available, so it is allowed to lead.
+Condition 1 is not hypothetical. An obstacle is visible for ~600ms and the round trip is
+~210ms, so the reflex is in charge for much of every approach. That is the reflex layer's
+entire remaining job.
 
-Gate 9 is why `--oracle` and `--adversarial` originally died in about 250 frames. Letting
-the model trigger its own jump made the dino leap when the round trip completed rather
-than when the cactus arrived. Ducking and holding have no arc, so they stay offered.
+### Why there is no gate
 
-`resolveModelOnly()` deliberately applies **none** of gates 5-9 and never returns the
-reflex action — its only safe fallback is `hold`. That is the control that measures what
-the gates are worth, and its crash is the measurement rather than a fault.
+The gates that used to be here were calibrated against the *class* question, which
+reported confidence 0.28-0.99. The decomposed maneuver question reports **0.000-0.054 on
+correct answers**, with per-class probabilities as flat as `duck 0.51 / jump 0.49`.
+`tev1:0.8b` can name the right maneuver and has no usable signal about how sure it is.
 
-`CLASS_TO_ACTION` (`policy.js:40-44`) is a lookup, not a decision:
+Every gate calibrated against the old signal fails against this one. A 0.2 confidence
+floor rejects essentially every answer, including the correct ones — the feature would
+appear to work while never firing. So there is nothing to gate with, and the cost is
+paid in survivability instead:
 
-| Class | Implied maneuver |
-|---|---|
-| `cactus` | `jump` |
-| `bird_low` | `jump` |
-| `bird_high` | `duck` |
+```
+reflex only     5/5 survived    score 5888
+--oracle        5/5 survived    score 5888    maneuver accuracy ~90%
+--model         0/5 survived    score ~700    maneuver accuracy ~73%
+--adversarial   0/5 survived    score 13     maneuver accuracy 0%
+```
+
+Same seeds, 20000 frames. The oracle scoring exactly what reflex scores is the project's
+original thesis surviving intact: the correct maneuver is fully determined by the game's
+own collision boxes, so a *perfect* decision-maker adds nothing to the score. Sole
+authority over a *fallible* one is fatal.
+
+`PolicyStats.scoreManeuver()` scores every decision against `reflexPlan().action`, after
+the fact. That is the only check the model's opinion ever receives, and it is
+deliberately after rather than before: the answer has already been acted on by the time
+it is counted. The error rate is therefore a visible number in the HUD and in
+`npm run replay` instead of a silent regression.
 
 ---
 
@@ -190,10 +188,10 @@ the gates are worth, and its crash is the measurement rather than a fault.
 | `core/geometry.js` | `readJumpConstants`, `jumpProfile`, `clearanceWindow`, `obstacleExtent`, `trexExtent`. Answers *whether a maneuver survives*. |
 | `core/classify.js` | `analyse()` — the class and the feasible maneuver set, both from collision boxes. |
 | `core/state.js` | `readState()` → `BotState`, plus `Tokeniser` for stable obstacle ids. |
-| `core/reflex.js` | `plan()` — per-frame action from geometry alone. The 60Hz safety net. |
-| `core/policy.js` | `resolve()`, `resolveModelOnly()`, `PolicyStats`. |
+| `core/reflex.js` | `plan()` — per-frame action from geometry alone, plus `jumpThreshold()`, which times a model-chosen jump. |
+| `core/policy.js` | `resolveManeuver()`, `PolicyStats`. |
 | `core/controller.js` | The pipeline. |
-| `core/vocabulary.js` | The three-class label space and the model-facing prose. |
+| `core/vocabulary.js` | The model-facing prose, including the distance phrasing and the bird-height bands. |
 
 ### How feasibility is derived
 
@@ -309,13 +307,14 @@ every extent to a point and silently disabling duck feasibility.
 
 ## 6. Model transport
 
-`Decider` wraps `POST /v1/systemone` so the rest of the bot deals in obstacle classes
-instead of HTTP. Two properties matter for a real-time game:
+`Decider` wraps `POST /v1/systemone` so the rest of the bot deals in maneuvers instead of
+HTTP. Three properties matter for a real-time game:
 
-1. **Dedup by obstacle.** There is one decision-relevant moment per obstacle, not one per
-   frame, so queries scale with events rather than with 60Hz.
+1. **Dedup per `(token, band)`.** A maneuver is a function of distance, so one query per
+   obstacle is not enough — see below.
 2. **Never block the caller.** If a query is in flight the caller is told so at once and
    falls back to the reflex layer.
+3. **A failed re-query does not overwrite a good earlier answer.**
 
 ```mermaid
 sequenceDiagram
@@ -324,54 +323,107 @@ sequenceDiagram
     participant PX as cors-proxy.mjs<br/>127.0.0.1:11436
     participant OL as Ollama<br/>127.0.0.1:11434
 
-    C->>D: request(token, sentence)
-    D->>D: if queried.has(token) → return cached
+    C->>D: request(token, sentence, band)
+    D->>D: if queried.has(token:band) → return cached
     D->>D: if inFlight >= maxConcurrent (1) → return null
     D->>PX: POST /v1/systemone
     PX->>PX: drop Origin, rewrite Host
     PX->>OL: POST /v1/systemone
-    OL-->>PX: answers.kind { choice, probabilities, confidence }
+    OL-->>PX: answers.clear { choice, probabilities, confidence }<br/>answers.urgent { noul }
     PX-->>D: + ACAO: * , ACAPN: true
-    D->>D: normaliseDecision() → ClassDecision
+    D->>D: normaliseDecision() → ManeuverDecision
     D-->>C: cached, picked up next frame via get(token)
 ```
 
-| `ClassDecision` | Notes |
+| `ManeuverDecision` | Notes |
 |---|---|
-| `kind` | chosen class key, `''` if the answer was not a `choice` |
-| `probability` | `distribution[kind] ?? 0` |
-| `distribution` | full class distribution |
-| `confidence` | reported concentration, `0` if absent |
+| `maneuver` | `jump` \| `duck` \| `hold`. **Derived**, not named by the model in one piece. |
+| `clearance` | what `clear` chose, `''` if not a usable `choice` |
+| `urgent` | `noul` probability that action is needed now; `NaN` if absent |
+| `isUrgent` | whether `urgent` cleared `URGENT_THRESHOLD` (0.5) |
+| `probability` | `distribution[clearance] ?? 0` |
+| `distribution` | full `clear` distribution |
+| `confidence` | reported concentration. **0.000-0.054 on correct answers** — for the HUD, not for gating. |
 | `latencyMs` | round trip |
 | `usage` | `input_tokens`, `output_tokens` |
-| `error` | set when the query failed; **the gate treats it as a defer** |
+| `error` | set when the query failed; the policy layer treats it as a defer |
 
-Failures never throw. `request()` catches, stores a decision with `error` set, and the
-policy layer defers to the reflex — so an unreachable Ollama degrades to reflex-only play
-rather than taking the bot down.
+`deriveManeuver()` is the whole decomposition in three lines: `urgent` below threshold
+means `hold`, otherwise `clear`'s choice stands. `hold` never competes for probability
+mass against the two maneuvers that press a key, which is what makes it reachable at all.
 
-`prune(liveTokens)` drops decisions for obstacles that have scrolled away, which bounds
-the cache to what is on screen.
+Failures never throw. `request()` catches and stores a decision with `error` set, so an
+unreachable Ollama degrades to reflex-covered play rather than taking the bot down. A
+failure on the *near* band does not overwrite a good *far*-band answer, because losing a
+correct `jump` to a timeout strands the dino in front of the obstacle it was told to clear.
+
+### Why two queries per obstacle
+
+A maneuver depends on distance as well as shape: the right answer for a high bird 900px
+out is `hold`, and at 130px it is `duck`. Dedup by token alone returned `hold` on entry to
+the 460px perception range, cached it for the whole approach, and the dino ran into the
+cactus it had been told to wait for — 0 jumps, dead at frame 86.
+
+So `Decider` keys its dedup on `(token, band)`. The controller re-asks on crossing into
+the near band at 300px (`NEAR_BAND_PX`), which is the most the round trip allows: at the
+top speed of 13px/frame ~210ms is ~165px of travel, putting the second answer near 135px.
+Late, but `JUMP_AIM = 0.54` sits past the middle of the clearance window precisely so a
+slightly late jump still clears. Measured at ~1.6 queries per obstacle.
 
 ### The question set
 
-Chosen by measurement (`decider.js:8-19`, reproduced from the probes in §8):
+Chosen by measurement. The single three-way maneuver question **cannot** work on
+`tev1:0.8b`: it latches onto whichever option is described most forcefully, and confidence
+moves *opposite* to accuracy across framings.
 
-| Encoding | Latency | Confidence | Discriminates |
-|---|---|---|---|
-| JSON state, `jump`/`duck`/`hold` choice | ~610ms | 0.08-0.18 | **no** — always jump |
-| Sentence state, `jump`/`duck`/`hold` choice | ~300ms | 0.37-0.42 | jump vs duck, never hold |
-| **Sentence state, obstacle-class choice** | **~260ms** | **0.28-0.99** | **yes** |
-| Two binary `noul` questions | ~400ms | n/a | poorly (0.47 vs 0.69) |
+| Framing (single `choice` over jump/duck/hold) | Accuracy | Breaks |
+|---|---|---|
+| sentence state + distance in words | 5/6 | `duck` unreachable (`duck` 0.14-0.23) |
+| distance as an explicit pixel count | 4/6 | `duck` unreachable |
+| explicit tactical rules in the criteria | 3/6 | `hold` unreachable |
+| duck framed as a posture change | 1/5 | ducks *everything*, `jump` falls to 0.09 |
+| gap-underneath + posture rationale | 1/5 | ducks *everything* |
+| duck criterion says "do not jump when…" | 4/5 | `duck` unreachable (`duck` 0.37) |
+
+Asking for an obstacle *class* instead was sharp — confidence 0.28-0.99, 80% accuracy — but
+it is not the decision. A class cannot express `hold`, and mapping it back to a maneuver
+is the lookup table this design set out to remove.
+
+What works is splitting the decision across two questions in one forward pass. Variant L
+of `probe-decompose.js` is production:
+
+| Variant | Shape | Accuracy |
+|---|---|---|
+| K | `clear` (neutral wording) + `urgent` | 3/5 — never picks `duck` |
+| **L** | **`clear` with the game's rules spelled out + `urgent`** | **5/5** |
+| M | L with inverted `noul` polarity | 0/5 — the polarity silently inverts the meaning |
+| N | L plus a redundant `overhead` boolean | 3/5 |
+
+L is the only framing in any probe that reached all three maneuvers. It costs ~370ms
+against ~260ms for the single class question, and it is the reason the model is told the
+game's rules — variant K has the same shape without them and fails. Read that as the cost:
+the model is told the rules, not the answer.
 
 Two rules keep the measurement honest:
 
-- **Prose, not JSON.** The same obstacle described as a JSON object gave a flat
-  distribution at confidence 0.08; as a sentence, a clean argmax up to 0.99.
+- **Prose, not JSON.** The same obstacle as a JSON object gave a flat distribution at
+  confidence 0.08; as a sentence, a clean argmax up to 0.99.
 - **No answer in the prompt.** `describeObstacle()` reports only what is on screen —
-  airborne or not, and the raw `yPos`. It never names the class and never hands over the
-  collision extents `classify.js` uses to derive the answer. If the prompt contained the
-  answer, scoring the model against geometry would just be measuring an echo.
+  airborne or not, and the raw `yPos`. It never names the maneuver and never hands over
+  the collision extents `classify.js` uses to derive the reference. If the prompt
+  contained the answer, scoring the model against geometry would just be measuring an echo.
+  Distance *is* included, in words, because `hold` is unreachable without it — but
+  `describeDistance()` phrases it because a bare pixel count measured worse than a word.
+
+### The yPos 75 description
+
+The single highest-risk string in the codebase. `yPos 75` is duckable, and it was described
+to the model as being at "head height" — which `QUESTIONS.clear`'s rules then say must be
+*jumped*. The model read the description correctly, followed the rule correctly, and died
+into a bird it could have ducked. Describing it as "above the runner" instead moved that
+scene from wrong to right, and `npm run replay` from 66.7% to 73.3%.
+
+`node src/node/probe-wording.js` reproduces the comparison across four wordings.
 
 ---
 
@@ -490,11 +542,12 @@ policy overrode the model and why.
 |---|---|
 | header | mode, speed px/f, distance |
 | obstacle | geometric class, width, `y`, gap px, time-to-contact ms |
+| model answer | maneuver, `clear`, `urgent`, confidence, whether it matches the reflex |
 | model | class, `ok` / `!=geometric`, confidence, probability |
 | geometry | required rise, apex, feasible set, preferred |
 | decision | reason string, source (`model` / `reflex`) |
 | totals | model vs reflex counts, model share % |
-| accuracy | classification accuracy % and count, wrong count |
+| accuracy | maneuver accuracy % and count, wrong count |
 | transport | avg latency ms, queries, failures |
 
 ---
@@ -553,8 +606,8 @@ confidence.
 
 `src/node/sim.js` is a hand-written port of the runner, not a game engine. It reproduces
 only what the bot reads and what decides survival, and presents a `runner` object with the
-same shape as the live `Runner.instance_`, so `readState`, `reflexPlan` and `resolve` run
-unmodified against it.
+same shape as the live `Runner.instance_`, so `readState`, `reflexPlan` and
+`resolveManeuver` run unmodified against it.
 
 ```mermaid
 flowchart LR
@@ -566,7 +619,7 @@ flowchart LR
 
     RUNSIM --> CTRL["core/controller.js"]
     REPLAY["replay.js"] --> AN["core/classify.js<br/>analyse()"]
-    REPLAY --> PO["core/policy.js<br/>resolve()"]
+    REPLAY --> PO["core/policy.js<br/>resolveManeuver()"]
     REPLAY --> DEC["Decider"]
     CTRL --> DEC
 ```
@@ -575,28 +628,35 @@ flowchart LR
 |---|---|---|
 | `npm run sim` | does the pipeline survive, and does the model change anything? | `--frames 4000` `--seed 1` `--runs 1` `--fps` `--no-reflex` `--verbose` |
 | `npm run sim -- --oracle` | does a *perfect* model change the score? | same |
-| `npm run sim -- --adversarial` | does the gate absorb a confident wrong model? | same |
+| `npm run sim -- --adversarial` | what does a confidently wrong decision-maker cost? | same |
 | `npm run sim -- --model` | what does the real `tev1:0.8b` do? | `--model` `--host` `--fps 60` |
-| `npm run replay` | model accuracy against collision geometry, no browser | `--repeat 1` `--model` `--host` `--verbose` |
+| `npm run replay` | maneuver accuracy vs the reflex, 5 obstacles x 3 distances, no browser | `--repeat 1` `--model` `--host` `--verbose` |
 | `npm run bench` | GPU throughput vs the load the loop actually applies | `--concurrency 1,2,4,8` `--requests 8` `--num-predict 128` `--warmup 2` `--sample-ms 200` `--skip-generate` `--skip-systemone` |
 | `node src/node/sweep-aim.js` | how was `JUMP_AIM` chosen? | `--seeds 12` `--frames 20000` `--start 100`, `SWEEP_VALUES` env |
-| `node src/node/probe-prompt.js` | why a class question, not a maneuver question? | `OLLAMA_HOST` `DECISAUR_MODEL` env |
+| `node src/node/probe-prompt.js` | does a maneuver question work at all? | `OLLAMA_HOST` `DECISAUR_MODEL` env |
+| `node src/node/probe-maneuver.js` | six framings of the single 3-way maneuver choice | `OLLAMA_HOST` `DECISAUR_MODEL` env |
+| `node src/node/probe-decompose.js` | the split question; variant L is production | `OLLAMA_HOST` `DECISAUR_MODEL` env |
+| `node src/node/probe-wording.js` | four descriptions of the duckable yPos 75 bird | `OLLAMA_HOST` `DECISAUR_MODEL` env |
 | `node src/node/probe-latency.js` | latency vs question count | `OLLAMA_HOST` `DECISAUR_MODEL` env |
 
 ### `ScriptedDecider`
 
 `--oracle` and `--adversarial` swap the network for a fixed policy, so the pipeline can be
-measured without a round trip and the confidence gate can be tested against a model that
-is reliably wrong:
+measured without a round trip:
 
-| Strategy | Answers | Confidence |
-|---|---|---|
-| `oracle` | whatever agrees with geometry | 0.99 |
-| `adversarial` | always the worst class available for the scene | 0.99 |
+| Strategy | `clear` | `urgent` | Answered on |
+|---|---|---|---|
+| `oracle` | what collision geometry would say | agrees | near band only |
+| `adversarial` | the wrong maneuver, always | 0.9 — claims urgency | near band only |
+
+The oracle returns `null` on the **far** band. That is deliberate: at 460px no collision
+geometry has been consulted yet and "wait" is the only defensible answer, so answering
+there would make the oracle a second reflex layer rather than an oracle. Deleting that
+branch is easy and silently turns `--oracle` into a much weaker control.
 
 `--no-reflex` requires one of `--model` / `--oracle` / `--adversarial`. Model-only flight
-needs something to answer the classification question, and silently falling back to the
-reflex layer would disguise the experiment as a success.
+needs something to answer the maneuver question, and silently falling back to the reflex
+layer would disguise the experiment as a success.
 
 ### `--fps` matters
 
@@ -633,9 +693,11 @@ saturation conclusion is possible**. It reports that as a server property, and r
 blame the card.
 
 It also says nothing about model accuracy, and nothing about whether the game gets better
-with more tok/s: the dino is driven by geometry at ~0 cost. Raw generation capacity is
-irrelevant to the one-query-per-obstacle regime the loop runs in, which is why the System
-One phase is measured separately rather than interpolated.
+with more tok/s. The dino is driven by the model's opinion, so the one thing that would
+make it faster is a shorter round trip — but that ~200ms is a single forward pass over a
+0.8b model, not generation, so tok/s is the wrong currency. Raw generation capacity is
+also irrelevant to the ~1.6-queries-per-obstacle regime the loop runs in, which is why
+the System One phase is measured separately rather than interpolated.
 
 ---
 
@@ -690,11 +752,12 @@ cited locations carry the detail.
 
 | Goal | Touch |
 |---|---|
-| Add a class | `vocabulary.js` `CLASSES`, `decider.js` `QUESTIONS.kind.criteria`, `policy.js` `CLASS_TO_ACTION` + `CLASS_MIN_CONFIDENCE` |
-| Change when the model is consulted | `config.js` `LOOP.perceptionRange` / `maxConcurrent` |
-| Change what the model is asked | `vocabulary.js` `describeObstacle()` / `describeDino()` |
-| Change gate strictness | `policy.js` gates 5-9, or `config.js` `POLICY` |
-| Change jump timing | `config.js` `JUMP_AIM`, then re-run `sweep-aim.js` |
+| Change the maneuver the model can name | `decider.js` `QUESTIONS.clear.criteria` + `deriveManeuver()` |
+| Change what `hold` means | `decider.js` `URGENT_THRESHOLD`, `geometry.js` `describeDistance()` |
+| Change how a scene is described to the model | `vocabulary.js` `describeObstacle()` — re-run `probe-wording.js` after any wording change |
+| Re-gate the model's opinion | `policy.js` `resolveManeuver()`. There is no usable confidence to gate on; see §3 before adding one |
+| Change when the model is consulted | `config.js` `LOOP.perceptionRange` / `maxConcurrent`, and `controller.js` `NEAR_BAND_PX` |
+| Change jump timing | `config.js` `JUMP_AIM`, then re-run `sweep-aim.js`. Applies to model-chosen jumps too, via `reflex.js` `jumpThreshold()` |
 | Adapt to a renamed game internal | `core/state.js` `readState()`, `browser/agent.js` `runner()` |
 | Add a build mode | `browser/modes.js` — `build.mjs` picks it up automatically |
-| Score the model somewhere new | `PolicyStats.scoreClassification()` against `analysis.geometric` |
+| Score the model somewhere new | `PolicyStats.scoreManeuver()` against `reflexPlan(state).action` |

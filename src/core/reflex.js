@@ -50,6 +50,38 @@ const IDLE = {
 };
 
 /**
+ * How far ahead, in px, a jump becomes survivable.
+ *
+ * The distance the dino should be from `centreDistance` when it presses space: the
+ * centre of the window in which it is high enough to clear `requiredRise`.
+ *
+ * Exported because the controller needs it even when the *decision* to jump came from
+ * the model rather than from `plan()`. Timing is not a decision - it is when the
+ * decision gets executed - so a model-chosen jump is still fired here. A jump pressed
+ * the frame the model's answer arrives lands on the obstacle instead of clearing it.
+ *
+ * @param {import('./state.js').BotState} state
+ * @param {import('./classify.js').Analysis} analysis
+ * @param {number} closingSpeed
+ * @returns {number} Distance in px, or `Infinity` when no jump can clear it.
+ */
+export function jumpThreshold(state, analysis, closingSpeed) {
+  const profile = jumpProfile({
+    gravity: state.gravity,
+    jumpVelocity0: state.jumpVelocity0,
+    dropVelocity: state.dropVelocity,
+    maxJumpHeight: state.maxJumpHeight,
+    minJumpHeight: state.minJumpHeight,
+    groundY: state.groundY,
+    speed: state.speed,
+  });
+  const window = clearanceWindow(profile, analysis.requiredRise);
+  if (window === null) return Infinity;
+  const aimFrame = window.start + JUMP_AIM * (window.end - window.start);
+  return aimFrame * closingSpeed;
+}
+
+/**
  * Decide what to do this frame without consulting the model.
  *
  * @param {import('./state.js').BotState} state
@@ -126,5 +158,4 @@ export function plan(state, options = {}) {
 
   return { ...base, action: 'hold', release: false, reason: `holding, ${centreDistance.toFixed(0)}px out` };
 }
-
 

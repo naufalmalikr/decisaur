@@ -20,6 +20,30 @@ export const FPS = 60;
 export const CLEARANCE_MARGIN = 2;
 
 /**
+ * Phrase an obstacle's distance in words, for the model prompt.
+ *
+ * A bare pixel count is worse than nothing: the probes put correct `hold` answers at
+ * 5/6 with a word ("far away") and 4/6 with the number stated outright. The model has
+ * no scale for 900px, but it does have one for "far away", and `hold` is unreachable
+ * without it.
+ *
+ * Boundaries follow the real timing rather than round numbers. At the game's top speed
+ * of 13px/frame the ~260-370ms model round trip is 170-290px of travel, so anything
+ * beyond a few hundred pixels is comfortably decidable before contact, and anything
+ * inside 200px is already inside the jump window.
+ *
+ * @param {number} centreDistance Pixels from the dino's centre to the obstacle's.
+ * @returns {string}
+ */
+export function describeDistance(centreDistance) {
+  if (!Number.isFinite(centreDistance)) return 'far away';
+  if (centreDistance <= 150) return 'very close, almost touching it';
+  if (centreDistance <= 300) return 'close';
+  if (centreDistance <= 600) return 'some way off';
+  return 'far away';
+}
+
+/**
  * Read jump physics from a live `Trex.config`.
  *
  * The upstream config spells it `INIITAL_JUMP_VELOCITY`. A bot that reads only

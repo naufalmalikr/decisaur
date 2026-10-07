@@ -7,20 +7,23 @@
  * the simulator exercises the same code path the browser does rather than a
  * reimplementation that can drift.
  *
- * Two switches shape the decision, both kept here so every front end inherits
- * them. `useModel` asks whether the model is consulted at all. `useReflex` asks
- * whether the model's answer must survive the gates in `policy.js` - confidence,
- * probability, geometry, and jump-window timing - or whether it is mapped
- * straight to an action with the model as sole pilot. The reflex plan is computed
- * either way: it carries the target and the geometric reference the prompt and
- * the scoring need, so only its *action* ever stops being authoritative.
+ * Two switches shape the decision, both kept here so every front end inherits them.
+ * `useModel` asks whether the model is consulted at all. `useReflex` asks what happens
+ * during the window before it answers: with it, the reflex geometry serves every frame
+ * the model has not yet replied for; without it, the dino does nothing until the model
+ * commits. That window is real rather than theoretical - ~370ms of round trip against a
+ * ~600ms perception range means the reflex is in charge for much of every approach.
+ *
+ * The reflex plan is computed either way. It carries the target, the prompt distance,
+ * and the geometric reference the scoring needs, so only its *action* stops being
+ * authoritative.
  */
 
 import { Decider } from '../ollama/decider.js';
 import { readState, liveTokens, Tokeniser } from './state.js';
-import { plan as reflexPlan } from './reflex.js';
-import { resolve, resolveModelOnly, PolicyStats } from './policy.js';
-import { describeObstacle, describeDino } from './vocabulary.js';
+import { plan as reflexPlan, jumpThreshold } from './reflex.js';
+import { resolveManeuver, PolicyStats } from './policy.js';
+import { describeState } from './vocabulary.js';
 import { LOOP } from '../config.js';
 
 /**
@@ -30,16 +33,27 @@ import { LOOP } from '../config.js';
  * @property {'model'|'reflex'} source
  * @property {string} reason
  * @property {import('./reflex.js').Plan|null} plan
- * @property {import('../ollama/decider.js').ClassDecision|null} modelDecision
+ * @property {import('../ollama/decider.js').ManeuverDecision|null} modelDecision
  */
+
+/**
+ * Distance at which an obstacle moves from the `far` approach band to `near`, in px.
+ *
+ * Chosen so the second query's ~240ms round trip still lands inside the clearance
+ * window. At the game's top speed of 13px/frame that is ~180px of travel, putting the
+ * answer around 120px - late, but `JUMP_AIM` sits past the middle of the window
+ * precisely so a slightly late jump still clears. At the opening speed of 6px/frame it
+ * is ~50px of travel and the answer is comfortably early.
+ */
+const NEAR_BAND_PX = 300;
 
 export class Controller {
   /**
    * @param {object} [options]
    * @param {Decider} [options.decider]
    * @param {boolean} [options.useModel]
-   * @param {boolean} [options.useReflex] False flies the model as the sole pilot
-   *   (`resolveModelOnly()`), dropping every gate. Defaults to true.
+   * @param {boolean} [options.useReflex] Whether the reflex geometry covers the frames
+   *   before the model answers. Defaults to true.
    * @param {number} [options.perceptionRange]
    */
   constructor(options = {}) {
@@ -65,7 +79,7 @@ export class Controller {
   }
 
   /**
-   * Switch between the gated policy (`true`) and model-only flight (`false`).
+   * Switch whether the reflex covers the frames before the model answers.
    *
    * @param {boolean} useReflex
    */
@@ -92,8 +106,9 @@ export class Controller {
    * Read the game, consult the model, and decide what to do this frame.
    *
    * Never throws and never awaits: if the model has not answered yet, the reflex
-   * answer stands. A slow or unreachable model therefore cannot change how the
-   * dino plays, only how it is described in the HUD.
+   * answer stands. A slow or unreachable model therefore cannot crash the loop, and
+   * with `useReflex` it cannot change how the dino plays - only how it is described
+   * in the HUD.
    *
    * @param {any} runner The live `Runner.instance_` or the simulator's stand-in.
    * @returns {Decision}
@@ -133,28 +148,56 @@ export class Controller {
 
     this.decider.prune(liveTokens(state));
 
-    const asked = this.committed.has(target.token) || this.decider.get(target.token) !== undefined;
-    if (this.useModel && plan.centreDistance <= this.perceptionRange && !asked) {
-      void this.decider.request(target.token, `${describeDino(state)} ${describeObstacle(target)}`);
+    // Dedup belongs to the `Decider`, keyed per `(token, band)`. Gating it here as well
+    // would suppress the second query: the far-band answer arrives at ~278px, by which
+    // point the obstacle is already in the `near` band and a fresh answer is needed.
+    const band = plan.centreDistance <= NEAR_BAND_PX ? 'near' : 'far';
+    if (this.useModel && plan.centreDistance <= this.perceptionRange && !this.committed.has(target.token)) {
+      void this.decider.request(target.token, describeState(state, target, plan.centreDistance), band);
     }
 
     const decision = this.decider.get(target.token) ?? null;
-    if (decision !== null) this.stats.scoreClassification(decision.kind || null, plan.analysis.geometric);
+    if (decision !== null && !decision.error) {
+      this.stats.scoreManeuver(decision.maneuver, plan.analysis.preferred);
+    }
 
-    const outcome = this.useReflex
-      ? resolve({ decision, analysis: plan.analysis, reflexAction: plan.action })
-      : resolveModelOnly({ decision, geometric: plan.analysis.geometric });
+    const outcome = resolveManeuver({ decision, reflexAction: this.useReflex ? plan.action : 'hold' });
     this.stats.record(outcome);
+
+    // A jump the model chose still has to be *timed*, and timing is not a decision.
+    // The model's round trip is ~240ms - roughly 180px of travel at the game's top
+    // speed - while the clearance window sits around 234px out. Firing the moment the
+    // answer lands puts the dino on the obstacle instead of over it, which is how this
+    // path died at frame 86 before the window was introduced.
+    const action = outcome.action === 'jump' ? this.timedJump(plan, state) : outcome.action;
 
     this.source = outcome.source;
     this.reason = outcome.source === 'model' ? outcome.reason : `${plan.reason} | ${outcome.reason}`;
 
-    return this.result(outcome.action, decision);
+    return this.result(action, decision);
+  }
+
+  /**
+   * Fire a jump only once the obstacle is inside the window geometry says clears it.
+   *
+   * Returns `hold` while waiting, which is indistinguishable from "decided not to jump"
+   * from the dino's point of view - nothing is pressed either way.
+   *
+   * @param {import('./reflex.js').Plan} plan
+   * @param {import('./state.js').BotState} state
+   * @returns {'jump'|'hold'}
+   */
+  timedJump(plan, state) {
+    if (state.tRex.jumping) return 'hold';
+    const threshold = jumpThreshold(state, plan.analysis, plan.closingSpeed);
+    if (plan.centreDistance <= threshold) return 'jump';
+    this.reason = `model chose jump, waiting for window (${plan.centreDistance.toFixed(0)}/${threshold.toFixed(0)}px)`;
+    return 'hold';
   }
 
   /**
    * @param {'jump'|'duck'|'hold'} action
-   * @param {import('../ollama/decider.js').ClassDecision|null} modelDecision
+   * @param {import('../ollama/decider.js').ManeuverDecision|null} modelDecision
    */
   result(action, modelDecision) {
     // Never press duck while airborne: `Runner.onKeyDown` intercepts ArrowDown

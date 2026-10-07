@@ -40,14 +40,15 @@
  *
  * WHAT A GPU BENCHMARK DOES NOT TELL YOU
  *
- * It does not tell you the model is *correct*. tev1:0.8b is a classifier whose
- * one systematic error (reading a body-height bird as bird_high) is caught by
- * the policy gate, not by speed. It does not tell you the game gets faster or
- * better with more tok/s: the dino is driven by geometry at ~0 cost, and the
- * model's answer is checked against collision boxes before it may act. And raw
- * generation capacity - however high - says nothing about the 1-query-per-
- * obstacle regime the bot actually runs in: that is why the System One phase is
- * measured separately, not interpolated.
+ * It does not tell you the model is *correct*. tev1:0.8b decides the maneuver and is
+ * wrong roughly a quarter of the time, concentrated on pterodactyl heights - an
+ * accuracy question, not a speed question. It also does not tell you the game gets
+ * faster or better with more tok/s: the dino is driven by the model's opinion, and the
+ * one thing that would make it faster is a shorter round trip, which is ~200ms and
+ * dominated by the forward pass rather than by generation. And raw generation capacity
+ * - however high - says nothing about the ~1.6-queries-per-obstacle regime the bot
+ * actually runs in: that is why the System One phase is measured separately, not
+ * interpolated.
  *
  *   node src/node/bench-gpu.js
  *   node src/node/bench-gpu.js --concurrency 1,4 --requests 4 --num-predict 64 --warmup 1

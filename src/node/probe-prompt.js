@@ -8,6 +8,15 @@
  *
  *   node src/node/probe-prompt.js
  */
+ * SUPERSEDED - kept as a historical record, not a description of the current design.
+ *
+ * This probe tests the obstacle-*class* question, which production no longer uses. The
+ * class is distance-invariant and cannot express `hold`, so the maneuver had to be
+ * recovered through a lookup table. It is kept because it is the first measurement that ruled the
+ * maneuver-question approach out, and because its latency-vs-question-count numbers are still the ones
+ * quoted in `decider.js`. For the question that ships, see `probe-decompose.js`.
+ */
+
 
 import { Ollama } from 'ollama/browser';
 import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE } from '../config.js';

@@ -2,23 +2,60 @@
  * System One decision client.
  *
  * Wraps Ollama's `POST /v1/systemone` endpoint so the rest of the bot deals in
- * obstacle classes instead of HTTP.
+ * maneuvers instead of HTTP.
  *
- * The question set was chosen by measurement, not intuition. Probing
- * `tev1:0.8b` with three encodings of the same decision:
+ * The question set was chosen by measurement, not intuition. The obvious design -
+ * one `choice` question over `jump`/`duck`/`hold` - does not work on `tev1:0.8b`,
+ * and neither does asking for an obstacle class. What follows is what the probes
+ * actually showed, including the two dead ends, because both explain the shape of
+ * the thing that does work.
  *
- *   | encoding                                | latency | confidence | discriminates |
- *   |-----------------------------------------|---------|------------|----------------|
- *   | JSON state, "jump/duck/hold" choice     | ~610ms  | 0.08-0.18  | no (always jump) |
- *   | sentence state, "jump/duck/hold" choice | ~300ms  | 0.37-0.42  | jump vs duck, never hold |
- *   | sentence state, class choice            | ~260ms  | 0.28-0.99  | yes |
- *   | two binary `noul` questions             | ~400ms  | n/a        | poorly (0.47 vs 0.69) |
+ * **Dead end 1: one three-way maneuver choice.** A `choice` over jump/duck/hold
+ * latches onto whichever option is described most forcefully and ignores the scene.
+ * Across eleven framings the failure was always the same trade:
  *
- * Asking what kind of obstacle is in front of the T-Rex is both the cheapest and
- * by far the sharpest question. The model turns out to be a good perceiver and a
- * poor tactician, so it classifies and the geometry layer picks the maneuver.
+ *   | framing                                        | accuracy | what breaks            |
+ *   |------------------------------------------------|----------|------------------------|
+ *   | sentence state + distance in words             | 5/6      | `duck` unreachable      |
+ *   | distance as an explicit pixel count            | 4/6      | `duck` unreachable      |
+ *   | explicit tactical rules in the criteria        | 3/6      | `hold` unreachable      |
+ *   | duck framed as a posture change ("shrink down")| 1/5      | ducks *everything*      |
+ *   | gap-underneath + posture rationale             | 1/5      | ducks *everything*      |
+ *   | duck criterion says "do not jump when..."      | 4/5      | `duck` unreachable      |
  *
- * Two properties matter for a real-time game:
+ * Giving `duck` a defensible rationale moved its probability to 0.75-0.89 but
+ * collapsed `jump` to 0.09: the model ducked cacti. Keeping `jump` as the default
+ * stranded `duck` at 0.14-0.37. Sharpening the rules (best confidence, 0.63) was
+ * the *least* accurate variant. Confidence and accuracy moved in opposite
+ * directions, so the confidence gate could not have separated the good framings.
+ *
+ * **Dead end 2: ask for an obstacle class and map it to a maneuver.** That is
+ * sharp - confidence 0.28-0.99, 80% classification accuracy - but the class is not
+ * the decision. A `bird_high` is ducked whether it is 20 frames out or 5, so the
+ * class cannot express `hold` at all, and the mapping back to a maneuver is a lookup
+ * table that the model was supposed to replace. Asking for the class is asking the
+ * model a question the code can answer better.
+ *
+ * **What works: decompose the decision.** The failure above is a single decision
+ * axis - "act or don't" - competing with a second one, "over or under". Splitting
+ * them into two questions in one forward pass removes the competition:
+ *
+ *   - `clear`  : choice between `jump` and `duck` only. Which maneuver clears it.
+ *   - `urgent` : `noul`. Does it need acting on yet.
+ *   - maneuver : `hold` when `urgent` says no, otherwise whatever `clear` chose.
+ *
+ * Measured on the six probe scenes spanning all three maneuvers, this reached 5/5,
+ * the only framing that ever got `duck` right without losing `hold`. It costs ~370ms
+ * against ~260ms for the single class question, because two questions are more work
+ * than one.
+ *
+ * The honest caveat, which `policy.js` records at the point of use: `clear` scores a
+ * reported confidence of 0.000-0.054 on correct answers. The argmax is right and the
+ * distribution is flat, so this model cannot tell you *how sure* it is about a
+ * maneuver - only which one it picked. Any confidence gate over this signal rejects
+ * nearly everything, so there is no gate; see `resolveManeuver()`.
+ *
+ * Two properties still matter for a real-time game:
  *
  *  1. **Dedup by obstacle.** There is one decision-relevant moment per obstacle,
  *     not one per frame, so queries scale with events rather than with 60Hz.
@@ -32,53 +69,115 @@ import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE, LOOP } from '../config.js';
 
 
 /**
- * One `choice` question in a single forward pass.
+ * Two questions in a single forward pass, decomposing "what should I do" into
+ * "what clears it" and "does it need doing yet".
  *
- * `criteria` doubles as the label space, so the entries are written as visual
- * descriptions rather than as instructions.
+ * The `clear` instructions carry the game's rules explicitly. That is not the same
+ * as handing over the answer: the model still has to read the scene to know which
+ * rule applies, and `vocabulary.js` still withholds the collision extents that
+ * `classify.js` derives the reference from. But the rules have to be spelled out -
+ * variant K of the probe, which had the same decomposition with a neutral `clear`
+ * question, scored 3/5 and never picked `duck`, while this wording scored 5/5.
+ *
+ * `criteria` doubles as the label space, so both entries are written to describe the
+ * situation each maneuver is for rather than to order the model.
+ * 
+ * Intentionally use "man" instead of "t-rex" to avoid the model's learned bias that a t-rex cannot duck.
  */
 export const QUESTIONS = {
-  kind: {
+  clear: {
     type: 'choice',
-    instructions: 'Look at the obstacle ahead of the running T-Rex and say what kind of obstacle it is.',
+    instructions:
+      'A man runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
+      'Anything standing on the ground must be jumped. A bird flying above the runner must be ducked under.',
+      // 'Anything standing on the ground must be jumped. A bird flying above the runner must be ducked under. ' +
+      // 'A bird flying at the runner\'s own height must be jumped, because ducking would not fit under it.',
     criteria: {
-      cactus: 'A cactus or other solid object standing on the ground.',
-      bird_high: 'A bird flying high above the ground, with open space underneath it.',
-      bird_low: 'A bird flying at the same height as the T-Rex.',
+      jump: 'Jump: go over the top of it.',
+      duck: 'Duck: shrink down and go underneath it.',
     },
+  },
+  urgent: {
+    type: 'noul',
+    instructions: 'Is the obstacle close enough that the man must act right now rather than keep running for another moment?',
   },
 };
 
 /**
- * @typedef {object} ClassDecision
- * @property {string} kind             Class key the model chose.
- * @property {number} probability      Probability on that class.
- * @property {Record<string, number>} distribution  Full class distribution.
- * @property {number} confidence       Probability concentration.
- * @property {number} latencyMs        Round trip time.
+ * `urgent` threshold below which the model says "not yet".
+ *
+ * The probe scenes put this between 0.21 (far, correct) and 0.51 (close, correct),
+ * so 0.5 is the midpoint of the range that actually discriminates. It is a measured
+ * split point, not a tuned one: the underlying `noul` distributions overlap.
+ */
+export const URGENT_THRESHOLD = 0.5;
+
+/** @type {readonly string[]} The maneuvers `clear` can name, before `urgent` is folded in. */
+export const CLEARANCES = ['jump', 'duck'];
+
+/** @param {unknown} value */
+function isClearance(value) {
+  return typeof value === 'string' && CLEARANCES.includes(value);
+}
+
+/**
+ * @typedef {object} ManeuverDecision
+ * @property {'jump'|'duck'|'hold'} maneuver  What the dino should do. Derived from
+ *   `clearance` and `urgent`, never named by the model in one piece.
+ * @property {'jump'|'duck'|''} clearance    What `clear` chose, `''` if not a choice.
+ * @property {number} urgent                 `urgent` probability that action is needed now.
+ * @property {boolean} isUrgent              Whether that cleared `URGENT_THRESHOLD`.
+ * @property {number} probability            Probability on `clearance`.
+ * @property {Record<string, number>} distribution  Full `clear` distribution.
+ * @property {number} confidence             Reported concentration of `clear`. Measured
+ *   at 0.000-0.054 on correct answers - present for the HUD, not for gating.
+ * @property {number} latencyMs              Round trip time.
  * @property {{input_tokens: number, output_tokens: number}} usage
- * @property {string} [error]          Set when the query failed.
+ * @property {string} [error]                Set when the query failed.
  */
 
 /**
- * Normalise an Ollama System One response into a `ClassDecision`.
+ * Combine the two answers into a single maneuver.
+ *
+ * `hold` is asserted whenever the obstacle is not urgent, and overrides whatever
+ * `clear` said. That is the whole point of the decomposition: `hold` never competes
+ * for probability mass against the two maneuvers that involve pressing a key.
+ *
+ * @param {'jump'|'duck'|''} clearance
+ * @param {number} urgent
+ * @returns {'jump'|'duck'|'hold'}
+ */
+export function deriveManeuver(clearance, urgent) {
+  if (!Number.isFinite(urgent) || urgent < URGENT_THRESHOLD) return 'hold';
+  return clearance === 'jump' || clearance === 'duck' ? clearance : 'hold';
+}
+
+/**
+ * Normalise an Ollama System One response into a `ManeuverDecision`.
  *
  * Anything unexpected collapses to safe defaults rather than throwing: this runs
- * inside the game loop, and an exception here would take the bot down.
+ * inside the game loop, and an exception here would take the bot down. The default
+ * is `hold`, which is the only answer that is always survivable.
  *
  * @param {import('ollama/browser').SystemOneResponse} response
  * @param {number} latencyMs
- * @returns {ClassDecision}
+ * @returns {ManeuverDecision}
  */
 export function normaliseDecision(response, latencyMs) {
-  const answer = response?.answers?.kind;
-  const distribution = answer?.type === 'choice' && answer.probabilities ? answer.probabilities : {};
-  const kind = answer?.type === 'choice' && typeof answer.choice === 'string' ? answer.choice : '';
-  const confidence = answer?.type === 'choice' && typeof answer.confidence === 'number' ? answer.confidence : 0;
+  const clear = response?.answers?.clear;
+  const urgentAnswer = response?.answers?.urgent;
+
+  const clearance = clear?.type === 'choice' && isClearance(clear.choice) ? clear.choice : '';
+  const distribution = clear?.type === 'choice' && clear.probabilities ? clear.probabilities : {};
+  const urgent = urgentAnswer?.type === 'noul' && Number.isFinite(urgentAnswer.noul) ? urgentAnswer.noul : NaN;
+  const confidence = clear?.type === 'choice' && typeof clear.confidence === 'number' ? clear.confidence : 0;
 
   return {
-    kind,
-    probability: distribution[kind] ?? 0,
+    maneuver: deriveManeuver(clearance, urgent),
+    clearance,
+    urgent,
+    isUrgent: Number.isFinite(urgent) && urgent >= URGENT_THRESHOLD,
+    probability: distribution[clearance] ?? 0,
     distribution,
     confidence,
     latencyMs,
@@ -95,7 +194,7 @@ export class Decider {
    * @param {string} [options.model]
    * @param {string} [options.host]
    * @param {number} [options.maxConcurrent]
-   * @param {(decision: ClassDecision, context: {token: string}) => void} [options.onDecision]
+   * @param {(decision: ManeuverDecision, context: {token: string}) => void} [options.onDecision]
    */
   constructor(options = {}) {
     this.model = options.model ?? DEFAULT_MODEL;
@@ -103,7 +202,7 @@ export class Decider {
     this.onDecision = options.onDecision ?? null;
     this.client = new Ollama({ host: options.host ?? DEFAULT_HOST });
 
-    /** @type {Map<string, ClassDecision>} */
+    /** @type {Map<string, ManeuverDecision>} */
     this.decisions = new Map();
     /** @type {Set<string>} */
     this.queried = new Set();
@@ -111,23 +210,34 @@ export class Decider {
     this.stats = { queries: 0, failures: 0, totalLatencyMs: 0, tokens: 0 };
   }
 
-  /** @returns {ClassDecision | undefined} */
+  /** @returns {ManeuverDecision | undefined} */
   get(token) {
     return this.decisions.get(token);
   }
 
   /**
-   * Ask the model to classify `token`'s obstacle. Never throws.
+   * Ask the model which maneuver clears `token`'s obstacle. Never throws.
+   *
+   * Dedup is per `(token, band)` rather than per token, because a maneuver is a
+   * function of distance and the correct answer changes as an obstacle closes. Asking
+   * once - which was right when the model named an obstacle *class*, a distance-
+   * invariant property - returned `hold` at 460px and cached it for good, so the dino
+   * ran into the cactus it was told to wait for. Two bands per obstacle is what the
+   * timing allows: at the top speed of 13px/frame the ~240ms round trip is ~180px of
+   * travel, so a query fired on entering `near` still lands inside the clearance
+   * window, which `JUMP_AIM` sits past the middle of for exactly this reason.
    *
    * @param {string} token Stable identifier for the obstacle.
    * @param {string} state Plain-English scene description.
-   * @returns {Promise<ClassDecision | null>}
+   * @param {'far'|'near'} band Which approach phase this query answers.
+   * @returns {Promise<ManeuverDecision | null>}
    */
-  async request(token, state) {
-    if (this.queried.has(token)) return this.decisions.get(token) ?? null;
+  async request(token, state, band = 'near') {
+    const key = `${token}:${band}`;
+    if (this.queried.has(key)) return this.decisions.get(token) ?? null;
     if (this.inFlight >= this.maxConcurrent) return null;
 
-    this.queried.add(token);
+    this.queried.add(key);
     this.inFlight += 1;
     const startedAt = Date.now();
 
@@ -148,7 +258,10 @@ export class Decider {
     } catch (error) {
       this.stats.failures += 1;
       const decision = {
-        kind: '',
+        maneuver: 'hold',
+        clearance: '',
+        urgent: NaN,
+        isUrgent: false,
         probability: 0,
         distribution: {},
         confidence: 0,
@@ -156,7 +269,10 @@ export class Decider {
         usage: { input_tokens: 0, output_tokens: 0 },
         error: error instanceof Error ? error.message : String(error),
       };
-      this.decisions.set(token, decision);
+      // A failed re-query must not overwrite a good earlier answer. The far-band
+      // reply may already say `jump`, and losing it to a timeout would strand the
+      // dino in front of the cactus it was told to clear.
+      if (!this.decisions.has(token)) this.decisions.set(token, decision);
       return decision;
     } finally {
       this.inFlight -= 1;
@@ -172,8 +288,9 @@ export class Decider {
     for (const token of this.decisions.keys()) {
       if (!liveTokens.has(token)) this.decisions.delete(token);
     }
-    for (const token of this.queried) {
-      if (!liveTokens.has(token)) this.queried.delete(token);
+    for (const key of this.queried) {
+      const token = key.slice(0, key.lastIndexOf(':'));
+      if (!liveTokens.has(token)) this.queried.delete(key);
     }
   }
 

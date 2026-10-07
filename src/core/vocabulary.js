@@ -1,46 +1,60 @@
 /**
  * The vocabulary shared by the decision model and the geometry layer.
  *
- * The label space is three classes, and it is chosen to match the one
- * distinction that decides whether the dino lives: whether the obstacle can be
- * ducked under or must be jumped. Geometry derives that from collision boxes;
- * the model is asked to see it. Keeping the classes here stops the two layers
- * drifting apart.
+ * The model is asked to name the maneuver, so the description has to carry two
+ * things: what the obstacle is, and how close it is. Distance is not decoration -
+ * without it `hold` is unreachable. Across the probe framings, describing an obstacle
+ * with no distance produced answers that never chose to do nothing, because nothing
+ * in the sentence implied that waiting was an option.
+ *
+ * What stays withheld is the part `./classify.js` derives the reference from: the
+ * collision extents, and the name of the maneuver. `yPos` is reported raw and the
+ * description is in words, so the model has to do the reading that the geometric
+ * reference does with numbers. Scoring the model against geometry only measures
+ * something if the prompt does not already contain the answer.
  */
 
-export const CLASSES = /** @type {const} */ (['cactus', 'bird_high', 'bird_low']);
-
-/** @param {unknown} value */
-export function isClass(value) {
-  return typeof value === 'string' && CLASSES.includes(/** @type {any} */ (value));
-}
+import { describeDistance } from './geometry.js';
 
 /**
  * Describe an obstacle for the model, in plain English.
  *
- * Two findings drove this format, both measured against `tev1:0.8b`:
+ * Three findings drove this format, all measured against `tev1:0.8b`:
  *
  *  - **Prose over structured data.** The same obstacle described as a JSON blob
- *    produced a flat distribution with confidence 0.08; described as a sentence
- *    it produced a clean argmax with confidence up to 0.99.
- *  - **No numbers that encode the answer.** The description deliberately reports
- *    only what is physically on screen - whether the obstacle is on the ground or
- *    in the air, and its raw `yPos`. It does not name the class, and it does not
- *    hand over the collision extents that `./classify.js` uses to derive the
- *    answer. If the prompt contained the answer, measuring the model's accuracy
- *    against the geometric reference would just be measuring the echo.
+ *    produced a flat distribution with confidence 0.08; described as a sentence it
+ *    produced a clean argmax with confidence up to 0.99.
+ *  - **Distance in words, and it must be there.** The probe put correct `hold`
+ *    answers at 5/6 when distance was phrased ("far away", "close") and dropped to
+ *    3/6 when it was absent. A bare pixel count read worse than a word did, so
+ *    `describeDistance()` phrases it and the number is not included.
+ *  - **No numbers that encode the answer.** The description reports only what is
+ *    physically on screen - airborne or not, and the raw `yPos` - and never the
+ *    collision extents `classify.js` uses to derive the reference.
  *
  * @param {import('./state.js').ObstacleView} obstacle
+ * @param {number} centreDistance Pixels from the dino's centre to the obstacle's.
  * @returns {string}
  */
-export function describeObstacle(obstacle) {
+export function describeObstacle(obstacle, centreDistance) {
+  const distance = describeDistance(centreDistance);
   if (obstacle.airborne) {
+    // The yPos 75 band is the one that decides whether the model ducks or jumps, and
+    // the wording matters more than anything else in this file. It was "about head
+    // height", which the model read as a body-level bird and jumped - a fatal answer -
+    // because the clearance rules in `QUESTIONS.clear` say a bird at head height must
+    // be jumped. Describing it as "above the runner" instead took the same scene from
+    // 2/6 to 4/6 (`node src/node/probe-wording.js`).
     const height =
-      obstacle.y <= 60 ? 'high in the air' : obstacle.y <= 85 ? 'in the air, about head height' : 'low, at the height of the runner';
-    return `A pterodactyl is flying ${height}, ahead of the runner.`;
+      obstacle.y <= 60
+        ? 'high in the air, well above the runner'
+        : obstacle.y <= 85
+          ? 'in the air, above the runner'
+          : 'at the same height as the runner';
+    return `A pterodactyl is flying ${height}, ${distance} ahead of the runner.`;
   }
   const size = obstacle.width >= 25 ? 'A large cactus' : 'A small cactus';
-  return `${size} is standing on the ground ahead of the runner.`;
+  return `${size} is standing on the ground, ${distance} ahead of the runner.`;
 }
 
 /**
@@ -56,4 +70,16 @@ export function describeDino(state) {
       ? 'It is sliding along the ground.'
       : 'It is running along the ground.';
   return `A T-Rex is running to the right. ${posture}`;
+}
+
+/**
+ * The full prompt state: the dino, the obstacle, and where the obstacle is.
+ *
+ * @param {import('./state.js').BotState} state
+ * @param {import('./state.js').ObstacleView} obstacle
+ * @param {number} centreDistance
+ * @returns {string}
+ */
+export function describeState(state, obstacle, centreDistance) {
+  return `${describeDino(state)} ${describeObstacle(obstacle, centreDistance)}`;
 }
