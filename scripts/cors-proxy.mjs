@@ -30,11 +30,38 @@
  *   decisaurHost = 'http://127.0.0.1:11436'   // in the console, before pasting
  */
 
-import { createServer, request as httpRequest } from 'node:http';
+import { Agent, createServer, request as httpRequest } from 'node:http';
 
 const listenPort = Number(process.env.DECISAUR_PROXY_PORT ?? 11436);
 const upstreamPort = Number(process.env.OLLAMA_PORT ?? 11434);
 const upstreamHost = process.env.OLLAMA_HOST ?? '127.0.0.1';
+
+/**
+ * Keep-alive towards Ollama. Without this every POST opens a new TCP connection
+ * (the default globalAgent has `keepAlive: false`), paying a handshake plus a
+ * fresh accept on Ollama per query. With this the socket is reused across
+ * obstacles (far band -> near band). `maxSockets` is loose so preflights and
+ * other GETs never queue behind a model POST.
+ */
+const upstreamAgent = new Agent({
+  keepAlive: true,
+  keepAliveMsecs: 10_000,
+  maxSockets: 10,
+  maxFreeSockets: 5,
+});
+
+/** Hop-by-hop headers belong to one connection only — never forward them, let Node set them. */
+const HOP_BY_HOP = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
 
 /**
  * Sent on every response, preflight or not. `Origin: null` is not a wildcard, so a
@@ -73,7 +100,22 @@ function upstreamHeaders(headers) {
   const forwarded = { ...headers };
   delete forwarded.origin;
   delete forwarded['access-control-request-private-network'];
+  for (const name of HOP_BY_HOP) delete forwarded[name];
   forwarded.host = `${upstreamHost}:${upstreamPort}`;
+  return forwarded;
+}
+
+/**
+ * Strip hop-by-hop headers from the upstream response before passing it to the
+ * browser. `content-length` / `content-type` pass through; `connection` /
+ * `transfer-encoding` are left for Node to write for the reused browser->proxy
+ * socket.
+ *
+ * @param {import('node:http').IncomingHttpHeaders} headers
+ */
+function downstreamHeaders(headers) {
+  const forwarded = { ...headers };
+  for (const name of HOP_BY_HOP) delete forwarded[name];
   return forwarded;
 }
 
@@ -88,15 +130,24 @@ const server = createServer((req, res) => {
   }
 
   const upstream = httpRequest(
-    { host: upstreamHost, port: upstreamPort, path: req.url, method: req.method, headers: upstreamHeaders(req.headers) },
+    {
+      host: upstreamHost,
+      port: upstreamPort,
+      path: req.url,
+      method: req.method,
+      headers: upstreamHeaders(req.headers),
+      agent: upstreamAgent,
+    },
     (up) => {
       // Ollama's own headers win on content negotiation; the CORS ones are ours,
       // because upstream has none to keep.
-      res.writeHead(up.statusCode ?? 502, { ...up.headers, ...CORS_HEADERS });
+      res.writeHead(up.statusCode ?? 502, { ...downstreamHeaders(up.headers), ...CORS_HEADERS });
       up.pipe(res);
     },
   );
 
+  // Browser went away (navigation / tab closed) -> don't leave the upstream keep-alive socket hanging.
+  req.on('aborted', () => upstream.destroy());
   upstream.on('error', (error) => {
     const dead = error.code === 'ECONNREFUSED';
     res.writeHead(502, {
@@ -114,6 +165,17 @@ const server = createServer((req, res) => {
 
   req.pipe(upstream);
 });
+
+/**
+ * Browser->proxy side. Browsers reuse connections automatically as long as the
+ * server allows it; Node's default `keepAliveTimeout` of 5s is too short across
+ * widely spaced obstacles, so the connection drops and is reopened. 30s bridges
+ * the gap between obstacles without holding idle sockets long. `headersTimeout`
+ * must stay above it (a Node requirement). Set before `listen` so the first
+ * connection already uses them.
+ */
+server.keepAliveTimeout = 30_000;
+server.headersTimeout = 35_000;
 
 server.listen(listenPort, '127.0.0.1', () => {
   console.info(`[decisaur] proxy http://127.0.0.1:${listenPort} -> http://${upstreamHost}:${upstreamPort}`);
