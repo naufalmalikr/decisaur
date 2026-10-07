@@ -2,13 +2,13 @@
  * Which decomposition of the maneuver question actually works.
  *
  * The single-choice question cannot do this job - `probe-maneuver.js` shows it
- * latching onto whichever option is described most forcefully, trading `duck` against
+ * latching onto whichever option is described most forcefully, trading `bow` against
  * `hold` with no setting that reaches both. The hypothesis behind this probe is that
  * the label space itself is the problem: three options where two are "act" and one is
  * "don't" gives a 0.8b model a single decision axis to be wrong about.
  *
  * Splitting it removes that axis. `clear` answers *what would clear this* from
- * {jump, duck}; `urgent` answers *does it need acting on yet*; `hold` is derived from
+ * {jump, bow}; `urgent` answers *does it need acting on yet*; `hold` is derived from
  * the second rather than competing in the first.
  *
  *   node src/node/probe-decompose.js
@@ -16,7 +16,7 @@
  * Variant L is what `QUESTIONS` in `../ollama/decider.js` is. It is the only framing in
  * any probe that reached all three maneuvers, and it is also the only one that had to
  * spell the game's rules into the question - variant K has the same shape with a neutral
- * `clear` and never picks `duck` at all. Read that as the cost of the approach: the model
+ * `clear` and never picks `bow` at all. Read that as the cost of the approach: the model
  * is told the rules, not the answer.
  */
 
@@ -29,7 +29,7 @@ const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
 const CASES = {
   'cactus, close': { scene: 'A large cactus is standing on the ground', gap: 120, truth: 'jump' },
   'cactus, far': { scene: 'A large cactus is standing on the ground', gap: 900, truth: 'hold' },
-  'overhead bird, close': { scene: 'A pterodactyl is flying high in the air, well above the runner', gap: 130, truth: 'duck' },
+  'overhead bird, close': { scene: 'A pterodactyl is flying high in the air, well above the runner', gap: 130, truth: 'bow' },
   'overhead bird, far': { scene: 'A pterodactyl is flying high in the air, well above the runner', gap: 900, truth: 'hold' },
   'head-height bird, close': { scene: 'A pterodactyl is flying at the same height as the runner', gap: 130, truth: 'jump' },
 };
@@ -48,7 +48,7 @@ const gapPhrase = (px) => {
  *
  * @param {string} label
  * @param {Record<string, any>} questions
- * @param {string} clearKey key of the {jump, duck} choice
+ * @param {string} clearKey key of the {jump, bow} choice
  * @param {string} urgentKey key of the noul; true means act now
  */
 async function probe(label, questions, clearKey, urgentKey) {
@@ -88,7 +88,7 @@ async function probe(label, questions, clearKey, urgentKey) {
   return hits;
 }
 
-// --- K: {jump,duck} clearance + "must act now" --------------------------------
+// --- K: {jump,bow} clearance + "must act now" --------------------------------
 await probe(
   'K. clearance choice + must-act-now',
   {
@@ -97,7 +97,7 @@ await probe(
       instructions: 'Look at the obstacle ahead of the running T-Rex and say which maneuver would get past it.',
       criteria: {
         jump: 'Jump over it. Correct when the obstacle stands on the ground or flies at the runner\'s own height.',
-        duck: 'Duck under it. Correct when the obstacle flies above the runner with open air underneath.',
+        bow: 'Bow under it. Correct when the obstacle flies above the runner with open air underneath.',
       },
     },
     urgent: {
@@ -117,11 +117,11 @@ await probe(
       type: 'choice',
       instructions:
         'A T-Rex runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
-        'Anything standing on the ground must be jumped. A bird flying above the runner must be ducked under. ' +
-        'A bird flying at the runner\'s own height must be jumped, because ducking would not fit under it.',
+        'Anything standing on the ground must be jumped. A bird flying above the runner must be bowed under. ' +
+        'A bird flying at the runner\'s own height must be jumped, because bowing would not fit under it.',
       criteria: {
         jump: 'Jump: go over the top of it.',
-        duck: 'Duck: shrink down and go underneath it.',
+        bow: 'Bow: shrink down and go underneath it.',
       },
     },
     urgent: {
@@ -143,7 +143,7 @@ await probe(
       instructions: 'Look at the obstacle ahead of the running T-Rex and say which maneuver would get past it.',
       criteria: {
         jump: 'Jump over it. Correct when the obstacle stands on the ground or flies at the runner\'s own height.',
-        duck: 'Duck under it. Correct when the obstacle flies above the runner with open air underneath.',
+        bow: 'Bow under it. Correct when the obstacle flies above the runner with open air underneath.',
       },
     },
     safe: {
@@ -159,14 +159,14 @@ await probe(
 // If `hold` is expressible as its own boolean it never has to compete with the two
 // active maneuvers for probability mass.
 await probe(
-  'N. clearance choice + separate "must duck" and "must act" booleans',
+  'N. clearance choice + separate "must bow" and "must act" booleans',
   {
     clear: {
       type: 'choice',
       instructions: 'Look at the obstacle ahead of the running T-Rex and say which maneuver would get past it.',
       criteria: {
         jump: 'Jump over it. Correct when the obstacle stands on the ground or flies at the runner\'s own height.',
-        duck: 'Duck under it. Correct when the obstacle flies above the runner with open air underneath.',
+        bow: 'Bow under it. Correct when the obstacle flies above the runner with open air underneath.',
       },
     },
     overhead: {

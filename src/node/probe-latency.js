@@ -2,7 +2,7 @@
  * Second probe: minimise latency while keeping discrimination.
  *
  * Probe 1 showed:
- *   - multi-way `choice` questions discriminate jump-vs-duck but never `hold`
+ *   - multi-way `choice` questions discriminate jump-vs-bow but never `hold`
  *   - binary `noul` questions separate ground-vs-air very cleanly (0.99 / 0.09)
  *   - latency scales with question count (~300ms for 1, ~580ms for 3)
  *
@@ -39,7 +39,7 @@ const CLASS_Q = {
     instructions: 'Identify the obstacle ahead so the T-Rex can choose a maneuver.',
     criteria: {
       cactus: 'A cactus or other solid object resting on the ground.',
-      bird_high: 'A bird flying high overhead, which can be ducked under.',
+      bird_high: 'A bird flying high overhead, which can be bowed under.',
       bird_low: 'A bird flying at body height, which must be jumped over.',
     },
   },
@@ -47,7 +47,7 @@ const CLASS_Q = {
 
 const TWO_NOUL_Q = {
   on_ground: { type: 'noul', instructions: 'Is the obstacle resting on the ground, such as a cactus?' },
-  flies_high: { type: 'noul', instructions: 'Is the obstacle a bird flying high overhead, which can be ducked under?' },
+  flies_high: { type: 'noul', instructions: 'Is the obstacle a bird flying high overhead, which can be bowed under?' },
 };
 
 async function run(label, questions, stateOf) {

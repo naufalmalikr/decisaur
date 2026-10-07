@@ -189,15 +189,15 @@ export function obstacleExtent(obstacle) {
 /**
  * Extent of the dino's collision boxes, absolute.
  *
- * Ducking does not move `yPos`; the shorter silhouette comes entirely from the
- * ducking box starting 18px lower, and that is what opens the clearance a high
+ * Bowing does not move `yPos`; the shorter silhouette comes entirely from the
+ * bowing box starting 18px lower, and that is what opens the clearance a high
  * bird needs.
  *
- * @param {{x: number, y: number, ducking: boolean}} tRex
+ * @param {{x: number, y: number, bowing: boolean}} tRex
  * @param {number[][]} [boxes]
  */
 export function trexExtent(tRex, boxes) {
-  const list = boxes ?? (tRex.ducking ? TREX_BOXES.DUCKING : TREX_BOXES.RUNNING);
+  const list = boxes ?? (tRex.bowing ? TREX_BOXES.BOWING : TREX_BOXES.RUNNING);
   let top = Infinity;
   let bottom = -Infinity;
   let left = Infinity;

@@ -28,8 +28,8 @@ import { LOOP } from '../config.js';
 
 /**
  * @typedef {object} Decision
- * @property {'jump'|'duck'|'hold'} action
- * @property {boolean} ducking  Whether the caller should be holding the duck key.
+ * @property {'jump'|'bow'|'hold'} action
+ * @property {boolean} bowing  Whether the caller should be holding the bow key.
  * @property {'model'|'reflex'} source
  * @property {string} reason
  * @property {import('./reflex.js').Plan|null} plan
@@ -64,7 +64,7 @@ export class Controller {
     this.tokeniser = new Tokeniser();
     this.stats = new PolicyStats();
 
-    this.ducking = false;
+    this.bowing = false;
     /** Obstacles already jumped, so a single approach never presses twice. */
     this.committed = new Set();
     this.source = 'reflex';
@@ -89,7 +89,7 @@ export class Controller {
 
   /** Forget per-run state after a crash or restart. */
   reset() {
-    this.ducking = false;
+    this.bowing = false;
     this.committed.clear();
     this.plan = null;
     this.source = 'reflex';
@@ -97,9 +97,9 @@ export class Controller {
     this.tokeniser.reset();
   }
 
-  /** True when the dino should be holding the duck key after this decision. */
-  get holdingDuck() {
-    return this.ducking;
+  /** True when the dino should be holding the bow key after this decision. */
+  get holdingBow() {
+    return this.bowing;
   }
 
   /**
@@ -124,7 +124,7 @@ export class Controller {
     }
 
     if (!state.playing || state.crashed) {
-      this.ducking = false;
+      this.bowing = false;
       this.committed.clear();
       this.decider.prune(new Set());
       this.plan = reflexPlan(state);
@@ -196,27 +196,27 @@ export class Controller {
   }
 
   /**
-   * @param {'jump'|'duck'|'hold'} action
+   * @param {'jump'|'bow'|'hold'} action
    * @param {import('../ollama/decider.js').ManeuverDecision|null} modelDecision
    */
   result(action, modelDecision) {
-    // Never press duck while airborne: `Runner.onKeyDown` intercepts ArrowDown
+    // Never press bow while airborne: `Runner.onKeyDown` intercepts ArrowDown
     // during a jump and calls `setSpeedDrop()`, so the press would both slam the
-    // dino down and be swallowed, leaving no duck at all.
+    // dino down and be swallowed, leaving no bow at all.
     const airborne = this.state?.tRex.jumping === true;
-    const safe = action === 'duck' && airborne ? 'hold' : action;
+    const safe = action === 'bow' && airborne ? 'hold' : action;
 
-    if (safe === 'duck') {
-      this.ducking = true;
+    if (safe === 'bow') {
+      this.bowing = true;
     } else {
-      this.ducking = false;
-      if (action !== safe) this.reason = 'duck suppressed while airborne (would speed-drop)';
+      this.bowing = false;
+      if (action !== safe) this.reason = 'bow suppressed while airborne (would speed-drop)';
     }
 
     if (safe === 'jump' && this.plan?.target) {
       this.committed.add(this.plan.target.token);
     }
 
-    return { action: safe, ducking: this.ducking, source: this.source, reason: this.reason, plan: this.plan, modelDecision };
+    return { action: safe, bowing: this.bowing, source: this.source, reason: this.reason, plan: this.plan, modelDecision };
   }
 }

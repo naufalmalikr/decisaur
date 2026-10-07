@@ -29,15 +29,15 @@ const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
  * What `analyse()` says each obstacle needs, from the collision boxes.
  *
  * Extents are transcribed from `constants.js`: the standing dino occupies y 93-136 and
- * the ducking dino y 111-136, so a bird is duckable whenever its bottom is above 111.
+ * the bowing dino y 111-136, so a bird is bowable whenever its bottom is above 111.
  */
 const TRUTH = {
   'cactus_large@130': 'jump',
   'bird_body@130': 'jump',
-  'bird_overhead@130': 'duck',
+  'bird_overhead@130': 'bow',
   'bird_sky_high@130': 'hold',
   'cactus_large@400': 'jump',
-  'bird_overhead@400': 'duck',
+  'bird_overhead@400': 'bow',
 };
 
 /**

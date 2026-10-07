@@ -19,19 +19,19 @@ import { clearanceWindow, jumpProfile, obstacleExtent, trexExtent } from './geom
 
 
 /**
- * How far ahead of the ducking dino's right edge a high bird triggers the duck.
+ * How far ahead of the bowing dino's right edge a high bird triggers the bow.
  *
- * Ducking has no arc, so starting early is free, and at the game's top speed of
+ * Bowing has no arc, so starting early is free, and at the game's top speed of
  * 13px/frame a 120px lead is only ~9 frames of warning.
  */
-const DUCK_LEAD_PX = 120;
+const BOW_LEAD_PX = 120;
 
 /**
  * @typedef {object} Plan
  * @property {import('./state.js').ObstacleView|null} target
  * @property {import('./classify.js').Analysis|null} analysis
- * @property {'jump'|'duck'|'hold'} action
- * @property {boolean} release   True when a held duck should be released this frame.
+ * @property {'jump'|'bow'|'hold'} action
+ * @property {boolean} release   True when a held bow should be released this frame.
  * @property {number} centreDistance
  * @property {number} closingSpeed
  * @property {number} timeToContactMs
@@ -112,21 +112,21 @@ export function plan(state, options = {}) {
 
   if (analysis.preferred === 'hold') {
     const behind = target.right < state.tRex.x - 4;
-    if (state.tRex.ducking && !behind) {
-      return { ...base, action: 'hold', release: true, reason: 'passing under, lifting the duck' };
+    if (state.tRex.bowing && !behind) {
+      return { ...base, action: 'hold', release: true, reason: 'passing under, lifting the bow' };
     }
     return { ...base, action: 'hold', release: false, reason: 'obstacle passes overhead, keep running' };
   }
 
-  if (analysis.preferred === 'duck') {
+  if (analysis.preferred === 'bow') {
     const ext = obstacleExtent(target);
-    const duckingBox = trexExtent(state.tRex, state.trexBoxes?.DUCKING);
+    const bowingBox = trexExtent(state.tRex, state.trexBoxes?.BOWING);
 
     if (ext.right < state.tRex.x) {
-      return { ...base, action: 'hold', release: true, reason: 'ducked past the bird' };
+      return { ...base, action: 'hold', release: true, reason: 'bowed past the bird' };
     }
-    if (ext.left < duckingBox.right + DUCK_LEAD_PX) {
-      return { ...base, action: 'duck', release: false, reason: `high bird, ducking at ${centreDistance.toFixed(0)}px` };
+    if (ext.left < bowingBox.right + BOW_LEAD_PX) {
+      return { ...base, action: 'bow', release: false, reason: `high bird, bowing at ${centreDistance.toFixed(0)}px` };
     }
     return { ...base, action: 'hold', release: false, reason: 'watching high bird' };
   }

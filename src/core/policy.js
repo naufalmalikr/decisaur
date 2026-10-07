@@ -8,7 +8,7 @@
  *
  * That is a measured decision, not an oversight. The decomposed question set in
  * `../ollama/decider.js` reports a `clear` confidence of 0.000-0.054 on answers that
- * are *correct*, with per-class probabilities as flat as `duck 0.51 / jump 0.49`. This
+ * are *correct*, with per-class probabilities as flat as `bow 0.51 / jump 0.49`. This
  * model can name the right maneuver and has no idea how sure it is. Every gate that
  * existed for the obstacle-class question - a per-class confidence floor, a probability
  * floor, a geometry veto - was calibrated against a signal that scored 0.28-0.99, and
@@ -31,7 +31,7 @@
 
 /**
  * @typedef {object} Resolution
- * @property {'jump'|'duck'|'hold'} action
+ * @property {'jump'|'bow'|'hold'} action
  * @property {'model'|'reflex'} source
  * @property {string} reason
  * @property {string} [clearance] What the model's `clear` question chose.
@@ -55,7 +55,7 @@
  *
  * @param {object} params
  * @param {import('../ollama/decider.js').ManeuverDecision|null|undefined} params.decision
- * @param {'jump'|'duck'|'hold'} params.reflexAction  Serves as the answer until one arrives.
+ * @param {'jump'|'bow'|'hold'} params.reflexAction  Serves as the answer until one arrives.
  * @returns {Resolution}
  */
 export function resolveManeuver({ decision, reflexAction }) {
@@ -105,8 +105,8 @@ export class PolicyStats {
    * scored. That is the deliberate cost of removing the gate, and this is what makes
    * it visible instead of silent.
    *
-   * @param {'jump'|'duck'|'hold'} predicted
-   * @param {'jump'|'duck'|'hold'|null} truth
+   * @param {'jump'|'bow'|'hold'} predicted
+   * @param {'jump'|'bow'|'hold'|null} truth
    */
   scoreManeuver(predicted, truth) {
     if (truth === null) return;

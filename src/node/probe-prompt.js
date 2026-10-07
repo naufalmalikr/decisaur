@@ -2,7 +2,7 @@
  * Prompt-format probe for tev1:0.8b.
  *
  * The first replay run showed the model returning `jump` for every scenario,
- * including a high-flying bird that only ducking can clear. Before building on
+ * including a high-flying bird that only bowing can clear. Before building on
  * top of it, find out whether that is the model being weak or the state /
  * question encoding being wrong.
  *
@@ -26,18 +26,18 @@ const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
 
 /** The two situations the bot must tell apart, plus a negative control. */
 const CASES = {
-  'high bird (must duck)': {
-    dino: { speed: 10, on_ground: true, ducking: false },
+  'high bird (must bow)': {
+    dino: { speed: 10, on_ground: true, bowing: false },
     obstacle: { kind: 'bird_high', ground: false, y: 75, height: 30 },
     gap_px: 110,
   },
   'large cactus (must jump)': {
-    dino: { speed: 8, on_ground: true, ducking: false },
+    dino: { speed: 8, on_ground: true, bowing: false },
     obstacle: { kind: 'cactus_large', ground: true, height: 50 },
     gap_px: 92,
   },
   'far small cactus (hold)': {
-    dino: { speed: 6, on_ground: true, ducking: false },
+    dino: { speed: 6, on_ground: true, bowing: false },
     obstacle: { kind: 'cactus_small', ground: true, height: 35 },
     gap_px: 520,
   },
@@ -86,7 +86,7 @@ const Q_PRODUCTION = {
       'One obstacle is approaching. Choose the maneuver that gets the T-Rex past it alive.',
     criteria: {
       jump: 'Jump: press space to leap over the obstacle.',
-      duck: 'Duck: press down to slide underneath the obstacle.',
+      bow: 'Bow: press down to slide underneath the obstacle.',
       hold: 'Hold: take no action and keep running.',
     },
   },
@@ -97,9 +97,9 @@ await probe('A. production (JSON state, production question)', (s) => s, Q_PRODU
 const stateToText = (s) => {
   const o = s.obstacle;
   if (o.ground) {
-    return `The T-Rex is running on the ground at speed ${s.dino.speed}. A ${o.kind.replace('_', ' ')} is on the ground ahead, ${s.gap_px} pixels away. It is too tall to duck under.`;
+    return `The T-Rex is running on the ground at speed ${s.dino.speed}. A ${o.kind.replace('_', ' ')} is on the ground ahead, ${s.gap_px} pixels away. It is too tall to bow under.`;
   }
-  return `The T-Rex is running on the ground at speed ${s.dino.speed}. A pterodactyl is flying ahead at height ${o.y}, ${s.gap_px} pixels away. It flies high enough to duck under.`;
+  return `The T-Rex is running on the ground at speed ${s.dino.speed}. A pterodactyl is flying ahead at height ${o.y}, ${s.gap_px} pixels away. It flies high enough to bow under.`;
 };
 await probe('B. plain-English state string', stateToText, Q_PRODUCTION);
 
@@ -109,11 +109,11 @@ const Q_TACTICAL = {
     type: 'choice',
     instructions:
       'Choose the next move for a running T-Rex.\n' +
-      'Rules of the game: a jump clears anything on the ground. A duck clears a bird flying overhead. ' +
+      'Rules of the game: a jump clears anything on the ground. A bow clears a bird flying overhead. ' +
       'A bird flying at head height must be jumped. Take no action when the obstacle is still far away.',
     criteria: {
       jump: 'Jump over it - correct for cacti and low-flying birds.',
-      duck: 'Duck under it - correct for birds flying high overhead.',
+      bow: 'Bow under it - correct for birds flying high overhead.',
       hold: 'Wait - correct when the obstacle is still far away.',
     },
   },

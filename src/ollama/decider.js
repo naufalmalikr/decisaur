@@ -5,33 +5,33 @@
  * maneuvers instead of HTTP.
  *
  * The question set was chosen by measurement, not intuition. The obvious design -
- * one `choice` question over `jump`/`duck`/`hold` - does not work on `tev1:0.8b`,
+ * one `choice` question over `jump`/`bow`/`hold` - does not work on `tev1:0.8b`,
  * and neither does asking for an obstacle class. What follows is what the probes
  * actually showed, including the two dead ends, because both explain the shape of
  * the thing that does work.
  *
- * **Dead end 1: one three-way maneuver choice.** A `choice` over jump/duck/hold
+ * **Dead end 1: one three-way maneuver choice.** A `choice` over jump/bow/hold
  * latches onto whichever option is described most forcefully and ignores the scene.
  * Across eleven framings the failure was always the same trade:
  *
  *   | framing                                        | accuracy | what breaks            |
  *   |------------------------------------------------|----------|------------------------|
- *   | sentence state + distance in words             | 5/6      | `duck` unreachable      |
- *   | distance as an explicit pixel count            | 4/6      | `duck` unreachable      |
+ *   | sentence state + distance in words             | 5/6      | `bow` unreachable      |
+ *   | distance as an explicit pixel count            | 4/6      | `bow` unreachable      |
  *   | explicit tactical rules in the criteria        | 3/6      | `hold` unreachable      |
- *   | duck framed as a posture change ("shrink down")| 1/5      | ducks *everything*      |
- *   | gap-underneath + posture rationale             | 1/5      | ducks *everything*      |
- *   | duck criterion says "do not jump when..."      | 4/5      | `duck` unreachable      |
+ *   | bow framed as a posture change ("shrink down")| 1/5      | bows *everything*      |
+ *   | gap-underneath + posture rationale             | 1/5      | bows *everything*      |
+ *   | bow criterion says "do not jump when..."      | 4/5      | `bow` unreachable      |
  *
- * Giving `duck` a defensible rationale moved its probability to 0.75-0.89 but
- * collapsed `jump` to 0.09: the model ducked cacti. Keeping `jump` as the default
- * stranded `duck` at 0.14-0.37. Sharpening the rules (best confidence, 0.63) was
+ * Giving `bow` a defensible rationale moved its probability to 0.75-0.89 but
+ * collapsed `jump` to 0.09: the model bowed cacti. Keeping `jump` as the default
+ * stranded `bow` at 0.14-0.37. Sharpening the rules (best confidence, 0.63) was
  * the *least* accurate variant. Confidence and accuracy moved in opposite
  * directions, so the confidence gate could not have separated the good framings.
  *
  * **Dead end 2: ask for an obstacle class and map it to a maneuver.** That is
  * sharp - confidence 0.28-0.99, 80% classification accuracy - but the class is not
- * the decision. A `bird_high` is ducked whether it is 20 frames out or 5, so the
+ * the decision. A `bird_high` is bowed whether it is 20 frames out or 5, so the
  * class cannot express `hold` at all, and the mapping back to a maneuver is a lookup
  * table that the model was supposed to replace. Asking for the class is asking the
  * model a question the code can answer better.
@@ -40,12 +40,12 @@
  * axis - "act or don't" - competing with a second one, "over or under". Splitting
  * them into two questions in one forward pass removes the competition:
  *
- *   - `clear`  : choice between `jump` and `duck` only. Which maneuver clears it.
+ *   - `clear`  : choice between `jump` and `bow` only. Which maneuver clears it.
  *   - `urgent` : `noul`. Does it need acting on yet.
  *   - maneuver : `hold` when `urgent` says no, otherwise whatever `clear` chose.
  *
  * Measured on the six probe scenes spanning all three maneuvers, this reached 5/5,
- * the only framing that ever got `duck` right without losing `hold`. It costs ~370ms
+ * the only framing that ever got `bow` right without losing `hold`. It costs ~370ms
  * against ~260ms for the single class question, because two questions are more work
  * than one.
  *
@@ -77,22 +77,22 @@ import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE, LOOP } from '../config.js';
  * rule applies, and `vocabulary.js` still withholds the collision extents that
  * `classify.js` derives the reference from. But the rules have to be spelled out -
  * variant K of the probe, which had the same decomposition with a neutral `clear`
- * question, scored 3/5 and never picked `duck`, while this wording scored 5/5.
+ * question, scored 3/5 and never picked `bow`, while this wording scored 5/5.
  *
  * `criteria` doubles as the label space, so both entries are written to describe the
  * situation each maneuver is for rather than to order the model.
  * 
- * Intentionally use "man" instead of "t-rex" to avoid the model's learned bias that a t-rex cannot duck.
+ * Intentionally use "man" instead of "t-rex" to avoid the model's learned bias that a t-rex cannot bow.
  */
 export const QUESTIONS = {
   clear: {
     type: 'choice',
     instructions:
       'A man runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
-      'Anything standing on the ground must be jumped. A bird flying above the runner must be ducked under.',
+      'Anything standing on the ground must be jumped. A bird flying above the runner must be bowed under.',
     criteria: {
       jump: 'Jump: go over the top of it.',
-      duck: 'Duck: shrink down and go underneath it.',
+      bow: 'Bow: shrink down and go underneath it.',
     },
   },
   urgent: {
@@ -111,7 +111,7 @@ export const QUESTIONS = {
 export const URGENT_THRESHOLD = 0.5;
 
 /** @type {readonly string[]} The maneuvers `clear` can name, before `urgent` is folded in. */
-export const CLEARANCES = ['jump', 'duck'];
+export const CLEARANCES = ['jump', 'bow'];
 
 /** @param {unknown} value */
 function isClearance(value) {
@@ -120,9 +120,9 @@ function isClearance(value) {
 
 /**
  * @typedef {object} ManeuverDecision
- * @property {'jump'|'duck'|'hold'} maneuver  What the dino should do. Derived from
+ * @property {'jump'|'bow'|'hold'} maneuver  What the dino should do. Derived from
  *   `clearance` and `urgent`, never named by the model in one piece.
- * @property {'jump'|'duck'|''} clearance    What `clear` chose, `''` if not a choice.
+ * @property {'jump'|'bow'|''} clearance    What `clear` chose, `''` if not a choice.
  * @property {number} urgent                 `urgent` probability that action is needed now.
  * @property {boolean} isUrgent              Whether that cleared `URGENT_THRESHOLD`.
  * @property {number} probability            Probability on `clearance`.
@@ -141,13 +141,13 @@ function isClearance(value) {
  * `clear` said. That is the whole point of the decomposition: `hold` never competes
  * for probability mass against the two maneuvers that involve pressing a key.
  *
- * @param {'jump'|'duck'|''} clearance
+ * @param {'jump'|'bow'|''} clearance
  * @param {number} urgent
- * @returns {'jump'|'duck'|'hold'}
+ * @returns {'jump'|'bow'|'hold'}
  */
 export function deriveManeuver(clearance, urgent) {
   if (!Number.isFinite(urgent) || urgent < URGENT_THRESHOLD) return 'hold';
-  return clearance === 'jump' || clearance === 'duck' ? clearance : 'hold';
+  return clearance === 'jump' || clearance === 'bow' ? clearance : 'hold';
 }
 
 /**

@@ -14,7 +14,7 @@ the model's opinion is allowed to act at all — which, for this question set, i
 
 | Layer | Question it answers | Latency | Reference |
 |---|---|---|---|
-| **Model** — `src/ollama/decider.js` | jump, duck, or hold? | ~210ms | measured, ~73% maneuver accuracy |
+| **Model** — `src/ollama/decider.js` | jump, bow, or hold? | ~210ms | measured, ~73% maneuver accuracy |
 | **Geometry** — `src/core/{classify,geometry,reflex}.js` | when is a jump survivable, and what do we do meanwhile? | ~0, per frame | exact |
 | **Policy** — `src/core/policy.js` | is the model's opinion allowed to act? | ~0 | nothing is gated (§3) |
 
@@ -100,7 +100,7 @@ sequenceDiagram
     C->>P: resolveManeuver({ decision, reflexAction })
     P-->>C: Resolution { action, source, reason }
     Note over C,R: model says jump → armed, fired at the<br/>clearance window, never on arrival
-    C-->>FE: Decision { action, ducking, source, reason, plan }
+    C-->>FE: Decision { action, bowing, source, reason, plan }
 ```
 
 Fire-and-forget is deliberate: `request()` is called with `void`. Blocking the frame on
@@ -111,10 +111,10 @@ a 100-260ms round trip at 60Hz would stall the game loop.
 `Controller.result()` (`controller.js:159-178`) applies two things that must live in the
 pipeline rather than in a front end, so both front ends inherit them:
 
-- **Airborne duck suppression.** `action === 'duck' && state.tRex.jumping` → `hold`,
+- **Airborne bow suppression.** `action === 'bow' && state.tRex.jumping` → `hold`,
   with the reason recorded. `Runner.onKeyDown` intercepts ArrowDown during a jump and
   calls `setSpeedDrop()`, so the press would both slam the dino down *and* be swallowed —
-  no duck happens at all.
+  no bow happens at all.
 - **`committed` set.** Tokens already jumped, so one approach never presses twice.
 
 ---
@@ -125,7 +125,7 @@ pipeline rather than in a front end, so both front ends inherit them:
 decision rather than an omission.
 
 The model is asked two questions in one forward pass — `clear` (a `choice` between
-`jump` and `duck`) and `urgent` (a `noul` on whether to act now) — and `hold` is derived
+`jump` and `bow`) and `urgent` (a `noul` on whether to act now) — and `hold` is derived
 from `urgent`. What survives into the decision is `decision.maneuver`, full stop.
 
 ```mermaid
@@ -140,7 +140,7 @@ Two things can stop the model, and neither is a gate on its opinion:
 | # | Condition | Code | Behaviour |
 |---|---|---|---|
 | 1 | no answer yet | `policy.js` | reflex geometry acts |
-| 2 | query failed, or `clear` did not name `jump`/`duck` | `policy.js` | reflex geometry acts |
+| 2 | query failed, or `clear` did not name `jump`/`bow` | `policy.js` | reflex geometry acts |
 
 Condition 1 is not hypothetical. An obstacle is visible for ~600ms and the round trip is
 ~210ms, so the reflex is in charge for much of every approach. That is the reflex layer's
@@ -150,7 +150,7 @@ entire remaining job.
 
 The gates that used to be here were calibrated against the *class* question, which
 reported confidence 0.28-0.99. The decomposed maneuver question reports **0.000-0.054 on
-correct answers**, with per-class probabilities as flat as `duck 0.51 / jump 0.49`.
+correct answers**, with per-class probabilities as flat as `bow 0.51 / jump 0.49`.
 `tev1:0.8b` can name the right maneuver and has no usable signal about how sure it is.
 
 Every gate calibrated against the old signal fails against this one. A 0.2 confidence
@@ -197,30 +197,30 @@ it is counted. The error rate is therefore a visible number in the HUD and in
 
 `analyse()` (`classify.js:54`) measures the dino **from the ground stance**, never from
 its live `y`: obstacles first become visible while the dino is still airborne from the
-last jump, and measuring mid-air makes a duckable bird look jump-only.
+last jump, and measuring mid-air makes a bowable bird look jump-only.
 
 ```
 requiredRise  = standing.bottom − obstacle.top + CLEARANCE_MARGIN   (margin = 2px)
 jumpFeasible  = apex >= requiredRise
-duckFeasible  = obstacle.bottom <= duckingBox.top
+bowFeasible  = obstacle.bottom <= bowingBox.top
 holdFeasible  = obstacle.bottom <= standingBox.top
-preferred     = hold ?? duck ?? jump        // cheapest that works
-geometric     = airborne ? (duckFeasible ? bird_high : bird_low) : cactus
+preferred     = hold ?? bow ?? jump        // cheapest that works
+geometric     = airborne ? (bowFeasible ? bird_high : bird_low) : cactus
 ```
 
-Standing dino occupies y 93-136; ducking, y 111-136. A pterodactyl sprite is 40px tall
+Standing dino occupies y 93-136; bowing, y 111-136. A pterodactyl sprite is 40px tall
 but its collision extent is only 19px, and the boxes sit far from the sprite's top-left —
 so classifying a bird by `yPos` alone is wrong, which is why classes come from the boxes.
 
-| Obstacle | Extent | Duck | Run | Required maneuver |
+| Obstacle | Extent | Bow | Run | Required maneuver |
 |---|---|---|---|---|
 | `CACTUS_LARGE` | 90-140 | hit | hit | jump |
 | `CACTUS_SMALL` | 105-139 | hit | hit | jump |
 | bird at y=100 | 108-127 | hit | hit | jump |
-| bird at y=75 | 83-102 | **free** | hit | duck |
+| bird at y=75 | 83-102 | **free** | hit | bow |
 | bird at y=50 | 58-77 | **free** | **free** | hold |
 
-Ducking works for *two* of the three bird heights, and only one of those is "high" by any
+Bowing works for *two* of the three bird heights, and only one of those is "high" by any
 naive `yPos` threshold. Hence three classes derived from boxes.
 
 ### Jump timing
@@ -293,15 +293,15 @@ token = `${canonicalType(type)}:${round(yPos)}:${counter}`
 |---|---|
 | `playing`, `crashed` | gates the pipeline |
 | `speed`, `distance`, `canvasWidth` | `currentSpeed`, `distanceRan`, `horizon.WIDTH` |
-| `tRex` | `x, y, width, jumping, ducking, jumpVelocity` |
-| `trexBoxes` | **both** `RUNNING` and `DUCKING`, not just the active set — "would standing clear this?" must not be answered with the ducking silhouette just because the dino is ducking now |
+| `tRex` | `x, y, width, jumping, bowing, jumpVelocity` |
+| `trexBoxes` | **both** `RUNNING` and `BOWING`, not just the active set — "would standing clear this?" must not be answered with the bowing silhouette just because the dino is bowing now |
 | `obstacles` | `ObstacleView[]`, sorted left to right |
 | `nearest` | `obstacles[0] ?? null` |
 | `gravity`, `jumpVelocity0`, `dropVelocity`, `maxJumpHeight`, `minJumpHeight`, `groundY` | from `readJumpConstants()` |
 
 `toTuples()` normalises both `CollisionBox` instances and plain tuples. The tuple branch
 matters: without it a build that hands over arrays yields `[0,0,0,0]` boxes, collapsing
-every extent to a point and silently disabling duck feasibility.
+every extent to a point and silently disabling bow feasibility.
 
 ---
 
@@ -337,7 +337,7 @@ sequenceDiagram
 
 | `ManeuverDecision` | Notes |
 |---|---|
-| `maneuver` | `jump` \| `duck` \| `hold`. **Derived**, not named by the model in one piece. |
+| `maneuver` | `jump` \| `bow` \| `hold`. **Derived**, not named by the model in one piece. |
 | `clearance` | what `clear` chose, `''` if not a usable `choice` |
 | `urgent` | `noul` probability that action is needed now; `NaN` if absent |
 | `isUrgent` | whether `urgent` cleared `URGENT_THRESHOLD` (0.5) |
@@ -360,7 +360,7 @@ correct `jump` to a timeout strands the dino in front of the obstacle it was tol
 ### Why two queries per obstacle
 
 A maneuver depends on distance as well as shape: the right answer for a high bird 900px
-out is `hold`, and at 130px it is `duck`. Dedup by token alone returned `hold` on entry to
+out is `hold`, and at 130px it is `bow`. Dedup by token alone returned `hold` on entry to
 the 460px perception range, cached it for the whole approach, and the dino ran into the
 cactus it had been told to wait for — 0 jumps, dead at frame 86.
 
@@ -376,14 +376,14 @@ Chosen by measurement. The single three-way maneuver question **cannot** work on
 `tev1:0.8b`: it latches onto whichever option is described most forcefully, and confidence
 moves *opposite* to accuracy across framings.
 
-| Framing (single `choice` over jump/duck/hold) | Accuracy | Breaks |
+| Framing (single `choice` over jump/bow/hold) | Accuracy | Breaks |
 |---|---|---|
-| sentence state + distance in words | 5/6 | `duck` unreachable (`duck` 0.14-0.23) |
-| distance as an explicit pixel count | 4/6 | `duck` unreachable |
+| sentence state + distance in words | 5/6 | `bow` unreachable (`bow` 0.14-0.23) |
+| distance as an explicit pixel count | 4/6 | `bow` unreachable |
 | explicit tactical rules in the criteria | 3/6 | `hold` unreachable |
-| duck framed as a posture change | 1/5 | ducks *everything*, `jump` falls to 0.09 |
-| gap-underneath + posture rationale | 1/5 | ducks *everything* |
-| duck criterion says "do not jump when…" | 4/5 | `duck` unreachable (`duck` 0.37) |
+| bow framed as a posture change | 1/5 | bows *everything*, `jump` falls to 0.09 |
+| gap-underneath + posture rationale | 1/5 | bows *everything* |
+| bow criterion says "do not jump when…" | 4/5 | `bow` unreachable (`bow` 0.37) |
 
 Asking for an obstacle *class* instead was sharp — confidence 0.28-0.99, 80% accuracy — but
 it is not the decision. A class cannot express `hold`, and mapping it back to a maneuver
@@ -394,7 +394,7 @@ of `probe-decompose.js` is production:
 
 | Variant | Shape | Accuracy |
 |---|---|---|
-| K | `clear` (neutral wording) + `urgent` | 3/5 — never picks `duck` |
+| K | `clear` (neutral wording) + `urgent` | 3/5 — never picks `bow` |
 | **L** | **`clear` with the game's rules spelled out + `urgent`** | **5/5** |
 | M | L with inverted `noul` polarity | 0/5 — the polarity silently inverts the meaning |
 | N | L plus a redundant `overhead` boolean | 3/5 |
@@ -417,10 +417,10 @@ Two rules keep the measurement honest:
 
 ### The yPos 75 description
 
-The single highest-risk string in the codebase. `yPos 75` is duckable, and it was described
+The single highest-risk string in the codebase. `yPos 75` is bowable, and it was described
 to the model as being at "head height" — which `QUESTIONS.clear`'s rules then say must be
 *jumped*. The model read the description correctly, followed the rule correctly, and died
-into a bird it could have ducked. Describing it as "above the runner" instead moved that
+into a bird it could have bowed. Describing it as "above the runner" instead moved that
 scene from wrong to right, and `npm run replay` from 66.7% to 73.3%.
 
 `node src/node/probe-wording.js` reproduces the comparison across four wordings.
@@ -515,8 +515,8 @@ new KeyboardEvent(type, { keyCode, which: keyCode, code, key, bubbles: true, can
 verifies and falls back to `Object.defineProperty` — never silently sending `keyCode: 0`,
 which the game would ignore.
 
-`jump()` fires keydown+keyup in one call. `startDuck()` / `endDuck()` are held, and
-`Agent.duckHeld` mirrors what the keyboard currently has down so events are not spammed.
+`jump()` fires keydown+keyup in one call. `startBow()` / `endBow()` are held, and
+`Agent.bowHeld` mirrors what the keyboard currently has down so events are not spammed.
 
 ### `Agent.runner()`, three shapes
 
@@ -636,7 +636,7 @@ flowchart LR
 | `node src/node/probe-prompt.js` | does a maneuver question work at all? | `OLLAMA_HOST` `DECISAUR_MODEL` env |
 | `node src/node/probe-maneuver.js` | six framings of the single 3-way maneuver choice | `OLLAMA_HOST` `DECISAUR_MODEL` env |
 | `node src/node/probe-decompose.js` | the split question; variant L is production | `OLLAMA_HOST` `DECISAUR_MODEL` env |
-| `node src/node/probe-wording.js` | four descriptions of the duckable yPos 75 bird | `OLLAMA_HOST` `DECISAUR_MODEL` env |
+| `node src/node/probe-wording.js` | four descriptions of the bowable yPos 75 bird | `OLLAMA_HOST` `DECISAUR_MODEL` env |
 | `node src/node/probe-latency.js` | latency vs question count | `OLLAMA_HOST` `DECISAUR_MODEL` env |
 
 ### `ScriptedDecider`
@@ -676,8 +676,8 @@ Transcribed from the game source, not guessed:
 - no more than two identical obstacle types in a row
 - pterodactyls need `speed >= 8.5` and scroll at `speed ± 0.8`
 - collision is the game's own two-stage test: bounding-box broad phase, then an
-  axis-aligned check of the dino's boxes against the obstacle's boxes, using the ducking
-  set while ducking
+  axis-aligned check of the dino's boxes against the obstacle's boxes, using the bowing
+  set while bowing
 
 `mulberry32` makes runs reproducible from a seed. `runner.horizon.obstacles` **aliases**
 `sim.obstacles` and is spliced in place — replacing the array would leave the state reader
@@ -735,12 +735,12 @@ cited locations carry the detail.
 | `Runner.config` *also* has an `INITIAL_JUMP_VELOCITY`, positive `12`, on a different object | `readJumpConstants()` is passed the **Trex** config only |
 | `endJump()` clamps velocity to `DROP_VELOCITY` (-5) at `MAX_JUMP_HEIGHT` — **still moving upward** | `jumpProfile()` mirrors it; the apex is *not* capped, the dino peaks around 91px above its standing top |
 | The game applies `jumpVelocity` to `yPos` and only *then* adds gravity | order preserved in `jumpProfile()`; reversing it shifts the arc by a frame |
-| Ducking does not move `yPos` | the shorter silhouette is entirely the ducking box starting 18px lower |
+| Bowing does not move `yPos` | the shorter silhouette is entirely the bowing box starting 18px lower |
 | A pterodactyl sprite is 40px tall but its collision extent is only 19px, boxes far from the top-left | classification reads boxes, never `yPos` alone |
-| `Runner.onKeyDown` intercepts ArrowDown mid-jump → `setSpeedDrop()`, slamming the dino down *and* swallowing the duck | `Controller.result()` suppresses duck while airborne; both front ends inherit it |
+| `Runner.onKeyDown` intercepts ArrowDown mid-jump → `setSpeedDrop()`, slamming the dino down *and* swallowing the bow | `Controller.result()` suppresses bow while airborne; both front ends inherit it |
 | Obstacle objects are pooled and recycled, so object identity is not a durable id | `Tokeniser` rotates the token when `xPos` increases |
 | The singleton is behind `Runner.getInstance()`, and `Runner` is a lexical binding, not a `window` property | `Agent.runner()` handles all three shapes |
-| `CollisionBox` instances vs plain tuples | `toTuples()` handles both; without the tuple branch, duck feasibility silently dies |
+| `CollisionBox` instances vs plain tuples | `toTuples()` handles both; without the tuple branch, bow feasibility silently dies |
 | Chrome refuses `fetch` into loopback from a non-secure-context page, before anything reaches the network | launch flag, or serve from `http://localhost` |
 | Ollama 403s any request whose `Origin` it does not allow, and `Origin: null` is never allowed | `cors-proxy.mjs` drops `Origin` upstream |
 | An early version let the model pick *and trigger* the maneuver, so the dino leapt on round-trip completion | gate 9 keeps jump timing with the reflex |

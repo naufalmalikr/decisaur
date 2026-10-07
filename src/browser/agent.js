@@ -9,7 +9,7 @@
 
 import { Controller } from '../core/controller.js';
 import { Decider } from '../ollama/decider.js';
-import { jump, startDuck, endDuck } from './keys.js';
+import { jump, startBow, endBow } from './keys.js';
 import { Hud } from './hud.js';
 
 export class Agent {
@@ -34,7 +34,7 @@ export class Agent {
     this.hud = options.hud === false ? null : new Hud('decisaur');
     this.running = false;
     /** Mirrors what the keyboard currently has down, so we do not spam events. */
-    this.duckHeld = false;
+    this.bowHeld = false;
 
     this.tick = this.tick.bind(this);
   }
@@ -59,7 +59,7 @@ export class Agent {
 
   stop() {
     this.running = false;
-    this.releaseDuck();
+    this.releaseBow();
     this.hud?.destroy();
   }
 
@@ -73,10 +73,10 @@ export class Agent {
     this.controller.setUseReflex(useReflex);
   }
 
-  releaseDuck() {
-    if (this.duckHeld) {
-      endDuck();
-      this.duckHeld = false;
+  releaseBow() {
+    if (this.bowHeld) {
+      endBow();
+      this.bowHeld = false;
     }
   }
 
@@ -113,12 +113,12 @@ export class Agent {
 
     if (decision.action === 'jump') jump();
 
-    if (decision.ducking && !this.duckHeld) {
-      startDuck();
-      this.duckHeld = true;
-    } else if (!decision.ducking && this.duckHeld) {
-      endDuck();
-      this.duckHeld = false;
+    if (decision.bowing && !this.bowHeld) {
+      startBow();
+      this.bowHeld = true;
+    } else if (!decision.bowing && this.bowHeld) {
+      endBow();
+      this.bowHeld = false;
     }
 
     this.render(decision);

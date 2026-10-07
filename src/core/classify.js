@@ -11,17 +11,17 @@
  * inference and is what the model's opinion is scored against.
  *
  * The measured extents (from `./constants.js`) make the interesting cases
- * concrete. Standing dino occupies y 93-136, ducking dino y 111-136:
+ * concrete. Standing dino occupies y 93-136, bowing dino y 111-136:
  *
- *   | obstacle        | extent  | duck | run  | required maneuver |
+ *   | obstacle        | extent  | bow | run  | required maneuver |
  *   |-----------------|---------|------|------|-------------------|
  *   | CACTUS_LARGE    | 90-140  | hit  | hit  | jump              |
  *   | CACTUS_SMALL    | 105-139 | hit  | hit  | jump              |
  *   | bird at y=100   | 108-127 | hit  | hit  | jump              |
- *   | bird at y=75    | 83-102  | free | hit  | duck (or jump)    |
+ *   | bird at y=75    | 83-102  | free | hit  | bow (or jump)    |
  *   | bird at y=50    | 58-77   | free | free | hold              |
  *
- * Note that ducking works for *two* of the three bird heights, and only one of
+ * Note that bowing works for *two* of the three bird heights, and only one of
  * those is a "high bird" by any naive `yPos` threshold. That is why classification
  * is derived from the boxes and not from a magic number.
  */
@@ -34,8 +34,8 @@ import { isAirborneType } from './constants.js';
  * @property {'cactus'|'bird_high'|'bird_low'|null} klass
  * @property {'cactus'|'bird_high'|'bird_low'|null} geometric Class derived from collision boxes.
  * @property {boolean} uncertain True when the obstacle is too unfamiliar to classify safely.
- * @property {Set<'jump'|'duck'|'hold'>} feasible
- * @property {'jump'|'duck'|'hold'} preferred
+ * @property {Set<'jump'|'bow'|'hold'>} feasible
+ * @property {'jump'|'bow'|'hold'} preferred
  * @property {number} requiredRise Height the dino must gain to clear the obstacle.
  * @property {number} apex Highest the jump can reach.
  * @property {number} timeToContactMs
@@ -57,10 +57,10 @@ export function analyse(state, obstacle, centreDistance, closingSpeed) {
 
   // Feasibility comes from the ground stance, never from the live y: obstacles
   // first become visible while the dino is still airborne from the last jump, and
-  // measuring mid-air makes a duckable bird look jump-only.
-  const stance = { x: state.tRex.x, y: state.groundY, ducking: false };
+  // measuring mid-air makes a bowable bird look jump-only.
+  const stance = { x: state.tRex.x, y: state.groundY, bowing: false };
   const standing = trexExtent(stance, boxes?.RUNNING);
-  const ducking = trexExtent(stance, boxes?.DUCKING);
+  const bowing = trexExtent(stance, boxes?.BOWING);
 
   const profile = jumpProfile({
     gravity: state.gravity,
@@ -77,12 +77,12 @@ export function analyse(state, obstacle, centreDistance, closingSpeed) {
   const known = airborne || obstacle.boxes !== undefined || obstacle.knownType === true;
 
   const jumpFeasible = apex >= requiredRise;
-  const duckFeasible = ext.bottom <= ducking.top;
+  const bowFeasible = ext.bottom <= bowing.top;
   const holdFeasible = ext.bottom <= standing.top;
 
   const feasible = new Set();
   if (jumpFeasible) feasible.add('jump');
-  if (duckFeasible) feasible.add('duck');
+  if (bowFeasible) feasible.add('bow');
   if (holdFeasible) feasible.add('hold');
   if (feasible.size === 0) feasible.add('hold');
 
@@ -90,23 +90,23 @@ export function analyse(state, obstacle, centreDistance, closingSpeed) {
   // obstacle passes overhead untouched.
   let preferred;
   if (holdFeasible) preferred = 'hold';
-  else if (duckFeasible) preferred = 'duck';
+  else if (bowFeasible) preferred = 'bow';
   else if (jumpFeasible) preferred = 'jump';
   else preferred = 'hold';
 
-  // A bird is "high" when ducking clears it. Everything else airborne must be
+  // A bird is "high" when bowing clears it. Everything else airborne must be
   // jumped, which is exactly the distinction the model is asked to make.
   const geometric = !known
     ? null
     : airborne
-      ? duckFeasible
+      ? bowFeasible
         ? 'bird_high'
         : 'bird_low'
       : 'cactus';
 
   const reasons = [];
   if (!airborne) reasons.push('ground obstacle');
-  else reasons.push(duckFeasible ? 'airborne, duck clears it' : 'airborne at body height');
+  else reasons.push(bowFeasible ? 'airborne, bow clears it' : 'airborne at body height');
   if (geometric === null) reasons.push('type unrecognised');
   reasons.push(`need ${requiredRise.toFixed(0)}px of rise, apex ${apex.toFixed(0)}px`);
 

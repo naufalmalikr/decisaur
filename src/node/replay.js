@@ -9,7 +9,7 @@
  *
  * Every obstacle is asked about at three distances, because the correct maneuver is a
  * function of distance as well as of shape. A high bird 900px out wants `hold`; the
- * same bird at 130px wants `duck`. Replaying each obstacle once would have measured
+ * same bird at 130px wants `bow`. Replaying each obstacle once would have measured
  * almost nothing, since every scene would land on the same `hold`.
  *
  *   npm run replay
@@ -89,7 +89,7 @@ function sceneFor(obstacleSpec, centreDistance, speed) {
     speed,
     distance: 0,
     canvasWidth: 600,
-    tRex: { x: TREX.START_X_POS, y: TREX.GROUND_Y, width: TREX.WIDTH, jumping: false, ducking: false, jumpVelocity: 0 },
+    tRex: { x: TREX.START_X_POS, y: TREX.GROUND_Y, width: TREX.WIDTH, jumping: false, bowing: false, jumpVelocity: 0 },
     trexBoxes: TREX_BOXES,
     obstacles: [obstacle],
     nearest: obstacle,

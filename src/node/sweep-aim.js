@@ -36,7 +36,7 @@ function runSeed(seed, jumpAim) {
 
   for (let frame = 0; frame < FRAMES && !sim.crashed; frame += 1) {
     const decision = reflexPlan(readState(sim.runner, tokeniser), { jumpAim });
-    sim.step({ jump: decision.action === 'jump', duck: decision.action === 'duck' });
+    sim.step({ jump: decision.action === 'jump', bow: decision.action === 'bow' });
   }
 
   return { survived: !sim.crashed, frame: sim.frame, score: sim.score };

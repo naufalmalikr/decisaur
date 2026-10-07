@@ -86,10 +86,10 @@ class ScriptedDecider {
     if (this.strategy === 'oracle') {
       if (!close) maneuver = 'hold';
       else if (!seesBird) maneuver = 'jump';
-      else maneuver = overhead ? 'duck' : 'jump';
+      else maneuver = overhead ? 'bow' : 'jump';
     } else {
       // Always claims the worst thing it can, with total confidence.
-      maneuver = seesBird ? 'jump' : 'duck';
+      maneuver = seesBird ? 'jump' : 'bow';
     }
 
     const decision = {
@@ -162,7 +162,7 @@ for (let run = 0; run < args.runs; run += 1) {
   const startedAt = Date.now();
 
   let jumps = 0;
-  let ducks = 0;
+  let bows = 0;
   /**
    * One reference row per queried obstacle: the model's maneuver next to the one
    * collision geometry would have given for the same token. Decisions are pruned as
@@ -177,7 +177,7 @@ for (let run = 0; run < args.runs; run += 1) {
   for (let frame = 0; frame < args.frames && !sim.crashed; frame += 1) {
     const decision = controller.decide(sim.runner);
     if (decision.action === 'jump') jumps += 1;
-    if (decision.action === 'duck') ducks += 1;
+    if (decision.action === 'bow') bows += 1;
 
     if (args.verbose && frame % 600 === 0) {
       const p = decision.plan;
@@ -188,7 +188,7 @@ for (let run = 0; run < args.runs; run += 1) {
       );
     }
 
-    sim.step({ jump: decision.action === 'jump', duck: controller.holdingDuck });
+    sim.step({ jump: decision.action === 'jump', bow: controller.holdingBow });
     await yieldToEventLoop();
 
     // Snapshot each queried obstacle's answer against the geometric reference,
@@ -226,7 +226,7 @@ for (let run = 0; run < args.runs; run += 1) {
     distance: Math.round(sim.distanceRan),
     speed: sim.speedNow,
     jumps,
-    ducks,
+    bows,
     spawned: sim.spawned,
     model: stats.model,
     reflex: stats.reflex,
@@ -234,14 +234,14 @@ for (let run = 0; run < args.runs; run += 1) {
     classified: stats.scored,
     crashType: detail?.type ?? '-',
     crashY: detail?.yPos ?? '-',
-    crashState: detail ? `${detail.jumping ? 'airborne' : detail.ducking ? 'ducking' : 'running'}` : '-',
+    crashState: detail ? `${detail.jumping ? 'airborne' : detail.bowing ? 'bowing' : 'running'}` : '-',
   });
 
   const label = `run ${run + 1}`;
   if (sim.crashed) {
     console.log(
       `${label.padEnd(7)} CRASHED at frame ${String(sim.frame).padStart(5)}  score ${String(sim.score).padStart(5)}  ` +
-        `hit ${detail?.type} y=${detail?.yPos} while ${detail?.jumping ? 'airborne' : detail?.ducking ? 'ducking' : 'running'}`,
+        `hit ${detail?.type} y=${detail?.yPos} while ${detail?.jumping ? 'airborne' : detail?.bowing ? 'bowing' : 'running'}`,
     );
   } else {
     console.log(
@@ -250,7 +250,7 @@ for (let run = 0; run < args.runs; run += 1) {
     );
   }
   console.log(
-    `        jumps ${jumps}  ducks ${ducks}  decisions: model ${stats.model} / ${args.noReflex ? 'unanswered' : 'reflex'} ${stats.reflex}` +
+    `        jumps ${jumps}  bows ${bows}  decisions: model ${stats.model} / ${args.noReflex ? 'unanswered' : 'reflex'} ${stats.reflex}` +
       (stats.maneuverAccuracy === null
         ? ''
         : `  maneuver accuracy ${(stats.maneuverAccuracy * 100).toFixed(1)}% (${stats.scored})`),

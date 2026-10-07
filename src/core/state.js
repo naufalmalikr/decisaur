@@ -73,7 +73,7 @@ export class Tokeniser {
  * @property {number} speed
  * @property {number} distance
  * @property {number} canvasWidth
- * @property {{x: number, y: number, width: number, jumping: boolean, ducking: boolean, jumpVelocity: number}} tRex
+ * @property {{x: number, y: number, width: number, jumping: boolean, bowing: boolean, jumpVelocity: number}} tRex
  * @property {number[][]} trexBoxes
  * @property {ObstacleView[]} obstacles  Sorted left to right.
  * @property {ObstacleView|null} nearest
@@ -93,7 +93,7 @@ const num = (value, fallback = 0) => (typeof value === 'number' && Number.isFini
  * Accepts `CollisionBox` instances, which is what the live game exposes, and plain
  * tuples. The tuple branch matters: without it a build that hands over arrays
  * yields `[0,0,0,0]` boxes, collapsing every extent to a point and silently
- * disabling duck feasibility.
+ * disabling bow feasibility.
  *
  * @param {any} boxes
  * @returns {number[][]|undefined}
@@ -161,14 +161,14 @@ export function readState(runner, tokeniser) {
       y: num(tRex.yPos, jump.groundY),
       width: num(tRexConfig.WIDTH, TREX.WIDTH),
       jumping: tRex.jumping === true,
-      ducking: tRex.ducking === true,
+      bowing: tRex.bowing === true,
       jumpVelocity: num(tRex.jumpVelocity),
     },
     // Both sets, not just the active one: "would standing clear this?" must not be
-    // answered with the ducking silhouette just because the dino is ducking now.
+    // answered with the bowing silhouette just because the dino is bowing now.
     trexBoxes: {
       RUNNING: toTuples(boxSet.RUNNING) ?? TREX_BOXES.RUNNING,
-      DUCKING: toTuples(boxSet.DUCKING) ?? TREX_BOXES.DUCKING,
+      BOWING: toTuples(boxSet.BOWING) ?? TREX_BOXES.BOWING,
     },
     obstacles,
     nearest: obstacles[0] ?? null,

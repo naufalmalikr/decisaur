@@ -1,15 +1,15 @@
 /**
  * Why the maneuver question is decomposed into two questions.
  *
- * `probe-prompt.js` established that a single `choice` over `jump`/`duck`/`hold` latches
+ * `probe-prompt.js` established that a single `choice` over `jump`/`bow`/`hold` latches
  * onto whichever option is described most forcefully: JSON state collapsed to "always
- * jump", and the sentence encoding separated jump from duck but never chose to do
+ * jump", and the sentence encoding separated jump from bow but never chose to do
  * nothing. Asking for an obstacle *class* instead was sharp (confidence 0.28-0.99) but
  * is not the decision - a class cannot express `hold`, and mapping it back to a
  * maneuver is the lookup table this change set out to remove.
  *
  * This probe re-runs the single-choice maneuver question across framings to find out
- * whether `hold` and `duck` can both be reached, and records the trade-off that makes
+ * whether `hold` and `bow` can both be reached, and records the trade-off that makes
  * the decomposition necessary.
  *
  *   node src/node/probe-maneuver.js
@@ -35,7 +35,7 @@ const CASES = {
   'large cactus, close': { dino: 'running along the ground', obstacle: 'A large cactus is standing on the ground', gap: 120, truth: 'jump' },
   'large cactus, far': { dino: 'running along the ground', obstacle: 'A large cactus is standing on the ground', gap: 900, truth: 'hold' },
   'small cactus, close': { dino: 'running along the ground', obstacle: 'A small cactus is standing on the ground', gap: 140, truth: 'jump' },
-  'bird overhead, close': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying high in the air, well above the runner', gap: 130, truth: 'duck' },
+  'bird overhead, close': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying high in the air, well above the runner', gap: 130, truth: 'bow' },
   'bird overhead, far': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying high in the air, well above the runner', gap: 900, truth: 'hold' },
   'bird at head height, close': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying at the same height as the runner', gap: 130, truth: 'jump' },
 };
@@ -89,7 +89,7 @@ const gapPhrase = (px) => {
 
 const CRITERIA = {
   jump: 'Jump: press space to leap over the obstacle.',
-  duck: 'Duck: press down to slide underneath the obstacle.',
+  bow: 'Bow: press down to slide underneath the obstacle.',
   hold: 'Hold: take no action and keep running as it is.',
 };
 
@@ -135,11 +135,11 @@ await probe(
       instructions:
         'Choose the next move for a running T-Rex.\n' +
         'Rules of the game: a jump clears anything standing on the ground. ' +
-        'A duck clears a bird flying high overhead. A bird flying at the runner\'s own height must be jumped. ' +
+        'A bow clears a bird flying high overhead. A bird flying at the runner\'s own height must be jumped. ' +
         'When the obstacle is still far away, do nothing and keep running.',
       criteria: {
         jump: 'Jump over it - correct for cacti and low-flying birds.',
-        duck: 'Duck under it - correct for birds flying high overhead.',
+        bow: 'Bow under it - correct for birds flying high overhead.',
         hold: 'Wait - correct when the obstacle is still far away.',
       },
     },

@@ -8,8 +8,8 @@
 
 /** `Runner.keycodes.JUMP` */
 export const JUMP_KEY = 32; // Space
-/** `Runner.keycodes.DUCK` */
-export const DUCK_KEY = 40; // ArrowDown
+/** `Runner.keycodes.BOW` */
+export const BOW_KEY = 40; // ArrowDown
 
 /**
  * Build a KeyboardEvent that reliably carries `keyCode`.
@@ -55,17 +55,17 @@ export function jump() {
   dispatch(JUMP_KEY, 'keyup');
 }
 
-/** Begin a duck. Held until {@link endDuck}. */
-export function startDuck() {
-  dispatch(DUCK_KEY, 'keydown');
+/** Begin a bow. Held until {@link endBow}. */
+export function startBow() {
+  dispatch(BOW_KEY, 'keydown');
 }
 
 /**
- * Release a duck.
+ * Release a bow.
  *
  * Releasing ArrowDown while airborne calls `setSpeedDrop()` inside the game,
- * which slams the dino to the floor. So never duck mid-jump.
+ * which slams the dino to the floor. So never bow mid-jump.
  */
-export function endDuck() {
-  dispatch(DUCK_KEY, 'keyup');
+export function endBow() {
+  dispatch(BOW_KEY, 'keyup');
 }

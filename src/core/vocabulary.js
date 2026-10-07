@@ -39,7 +39,7 @@ import { describeDistance } from './geometry.js';
 export function describeObstacle(obstacle, centreDistance) {
   const distance = describeDistance(centreDistance);
   if (obstacle.airborne) {
-    // The yPos 75 band is the one that decides whether the model ducks or jumps, and
+    // The yPos 75 band is the one that decides whether the model bows or jumps, and
     // the wording matters more than anything else in this file. It was "about head
     // height", which the model read as a body-level bird and jumped - a fatal answer -
     // because the clearance rules in `QUESTIONS.clear` say a bird at head height must
@@ -66,7 +66,7 @@ export function describeObstacle(obstacle, centreDistance) {
 export function describeDino(state) {
   const posture = state.tRex.jumping
     ? 'It is in mid-air.'
-    : state.tRex.ducking
+    : state.tRex.bowing
       ? 'It is sliding along the ground.'
       : 'It is running along the ground.';
   return `A T-Rex is running to the right. ${posture}`;

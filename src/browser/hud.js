@@ -57,7 +57,7 @@ export class Hud {
       return;
     }
 
-    lines.push(`${DIM}${view.mode}  ${state.speed.toFixed(1)}px/f  d${Math.round(state.distance)}</span>`);
+    lines.push(`${state.speed.toFixed(1)}px/f  d${Math.round(state.distance)}</span>`);
     lines.push(`${DIM}${'─'.repeat(28)}</span>`);
 
     const analysis = plan?.analysis ?? null;

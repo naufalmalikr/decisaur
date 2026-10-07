@@ -40,8 +40,8 @@ export const TREX = {
   GROUND_Y: CANVAS.HEIGHT - 47 - RUNNER.BOTTOM_PAD, // 93
   WIDTH: 44,
   HEIGHT: 47,
-  WIDTH_DUCK: 59,
-  HEIGHT_DUCK: 25,
+  WIDTH_BOW: 59,
+  HEIGHT_BOW: 25,
   START_X_POS: 50,
   DROP_VELOCITY: -5,
   GRAVITY: 0.6,
@@ -53,8 +53,8 @@ export const TREX = {
 
 /**
  * `Trex.collisionBoxes`, as `[x, y, width, height]` offsets from the dino's
- * `xPos` / `yPos`. The dino does not move its `yPos` when ducking - the shorter
- * silhouette is expressed entirely by the ducking box starting 18px lower.
+ * `xPos` / `yPos`. The dino does not move its `yPos` when bowing - the shorter
+ * silhouette is expressed entirely by the bowing box starting 18px lower.
  */
 export const TREX_BOXES = {
   RUNNING: [
@@ -65,7 +65,7 @@ export const TREX_BOXES = {
     [5, 30, 21, 4],
     [9, 34, 15, 4],
   ],
-  DUCKING: [[1, 18, 55, 25]],
+  BOWING: [[1, 18, 55, 25]],
 };
 
 /**

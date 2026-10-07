@@ -21,12 +21,12 @@ still fills the frames before the model has answered:
 
 | Layer | Question it answers | Latency | Measured |
 |---|---|---|---|
-| **Model** (`tev1:0.8b`) | *jump, duck, or hold?* | ~210ms | **~73%** maneuver accuracy |
+| **Model** (`tev1:0.8b`) | *jump, bow, or hold?* | ~210ms | **~73%** maneuver accuracy |
 | **Geometry** | *when is a jump survivable, and what do we do meanwhile?* | ~0 (per frame) | exact |
 | **Policy** | *is the model's opinion allowed to act?* | ~0 | — nothing is gated |
 
 The model is asked one question per obstacle per approach phase: a `choice` between
-`jump` and `duck`, plus a `noul` on whether the obstacle needs acting on yet. `hold` is
+`jump` and `bow`, plus a `noul` on whether the obstacle needs acting on yet. `hold` is
 derived from the second, so it never competes for probability mass against the two
 maneuvers that press a key. That decomposition is the only framing that reached all
 three maneuvers on `tev1:0.8b` - a single three-way question latches onto whichever
@@ -41,7 +41,7 @@ collision geometry, which made a confidently-wrong model harmless: `--oracle` an
 from the model.
 
 This design removes the gate. `clear` reports confidence 0.000-0.054 on *correct*
-answers, with probabilities as flat as `duck 0.51 / jump 0.49` - this model can name the
+answers, with probabilities as flat as `bow 0.51 / jump 0.49` - this model can name the
 right maneuver and cannot tell you how sure it is, so any confidence floor rejects
 nearly everything including the right answers. There is nothing to gate with, and the
 consequence is measured rather than argued:
@@ -59,16 +59,16 @@ determined by the game's own collision boxes, so a perfect decision-maker adds n
 to the score. Give the model sole authority over a bad decision-maker and it dies.
 
 Two things make the difference between `--oracle` and `--model`, and both are the model's:
-it cannot reliably tell a duckable bird from a jumpable one, and its answer arrives too
+it cannot reliably tell a bowable bird from a jumpable one, and its answer arrives too
 late to matter without the geometry layer timing the jump.
 
 ### What the model gets wrong
 
 ~73% over 20000-frame runs, and the error is concentrated rather than random: the
 failures are almost all pterodactyls. Where the model is wrong about a bird's height it
-either ducks something that must be jumped or runs into something it could have ducked.
+either bows something that must be jumped or runs into something it could have bowed.
 
-One scene dominated everything until it was found. `yPos 75` is duckable and was
+One scene dominated everything until it was found. `yPos 75` is bowable and was
 described to the model as being at "head height", which the clearance rules then said
 must be jumped - the model read the description correctly, followed the rule correctly,
 and died. Describing it as "above the runner" instead moved that scene from wrong to
@@ -187,7 +187,7 @@ npm run bench                        # GPU throughput vs the load the loop appli
 
 `npm run replay` asks every obstacle about at three distances, because the correct
 maneuver is a function of distance and not only of shape - a high bird 900px out wants
-`hold`, the same bird at 130px wants `duck`.
+`hold`, the same bird at 130px wants `bow`.
 
 
 ---
@@ -263,7 +263,7 @@ responsibilities are in [ARCHITECTURE.md §4](ARCHITECTURE.md#modules).
   HUD shows `model query failed` and `model share 0%`, which is the honest report of a
   model that contributed nothing that run.
 - **`yPos 75` is described to the model in words, not numbers, and the wording is
-  load-bearing.** "about head height" made the model jump a duckable bird and die; "above
+  load-bearing.** "about head height" made the model jump a bowable bird and die; "above
   the runner" fixed it. `node src/node/probe-wording.js` reproduces the comparison.
 
 Game internals - transcribed constants, which maneuver is actually possible, and

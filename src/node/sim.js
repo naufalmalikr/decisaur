@@ -16,7 +16,7 @@
  *   - pterodactyls need `speed >= 8.5` and scroll at `speed ± 0.8`
  *   - collision is the game's own two-stage test: a bounding-box broad phase, then
  *     an axis-aligned check of the dino's boxes against the obstacle's boxes, using
- *     the ducking set while ducking
+ *     the bowing set while bowing
  */
 
 import { CANVAS, OBSTACLE_TYPES, RUNNER, TREX, TREX_BOXES } from '../core/constants.js';
@@ -53,7 +53,7 @@ class SimTrex {
     this.minJumpHeight = this.groundYPos - TREX.MIN_JUMP_HEIGHT;
     this.jumpVelocity = 0;
     this.jumping = false;
-    this.ducking = false;
+    this.bowing = false;
     this.speedDrop = false;
     this.reachedMinHeight = false;
     this.jumpCount = 0;
@@ -97,7 +97,7 @@ export class Sim {
     this.frame = 0;
     this.crashed = false;
     this.playing = true;
-    this.duckHeld = false;
+    this.bowHeld = false;
     /** @type {string[]} */
     this.obstacleHistory = [];
     /** @type {SimObstacle[]} */
@@ -169,22 +169,22 @@ export class Sim {
 
   /** Apply one frame of input, then advance the world. */
   /**
-   * @param {{jump?: boolean, duck?: boolean}} input
+   * @param {{jump?: boolean, bow?: boolean}} input
    */
   step(input) {
     const tRex = this.tRex;
 
-    if (input.jump && !tRex.jumping && !tRex.ducking) {
+    if (input.jump && !tRex.jumping && !tRex.bowing) {
       tRex.jumping = true;
       tRex.reachedMinHeight = false;
       tRex.speedDrop = false;
       tRex.jumpVelocity = TREX.INITIAL_JUMP_VELOCITY - this.speed / 10;
     }
 
-    if (input.duck !== this.duckHeld) {
-      this.duckHeld = input.duck === true;
-      // The game only lets the dino duck while it is on the ground.
-      tRex.ducking = this.duckHeld && !tRex.jumping;
+    if (input.bow !== this.bowHeld) {
+      this.bowHeld = input.bow === true;
+      // The game only lets the dino bow while it is on the ground.
+      tRex.bowing = this.bowHeld && !tRex.jumping;
     }
 
     this.advanceWorld();
@@ -252,7 +252,7 @@ export class Sim {
       width: tRex.config.WIDTH - 2,
       height: tRex.config.HEIGHT - 2,
     };
-    const trexBoxes = tRex.ducking ? TREX_BOXES.DUCKING : TREX_BOXES.RUNNING;
+    const trexBoxes = tRex.bowing ? TREX_BOXES.BOWING : TREX_BOXES.RUNNING;
 
     for (const obstacle of this.obstacles) {
       const obstacleBox = {
@@ -279,14 +279,14 @@ export class Sim {
   firstCollider() {
     const tRex = this.tRex;
     for (const obstacle of this.obstacles) {
-      const trexBoxes = tRex.ducking ? TREX_BOXES.DUCKING : TREX_BOXES.RUNNING;
+      const trexBoxes = tRex.bowing ? TREX_BOXES.BOWING : TREX_BOXES.RUNNING;
       const trexBox = { x: tRex.xPos + 1, y: tRex.yPos + 1 };
       for (const [bx, by, bw, bh] of trexBoxes) {
         const t = { x: bx + trexBox.x, y: by + trexBox.y, width: bw, height: bh };
         for (const box of obstacle.collisionBoxes) {
           const o = { x: box.x + obstacle.xPos + 1, y: box.y + obstacle.yPos + 1, width: box.width, height: box.height };
           if (overlaps(t, o)) {
-            return { type: obstacle.type, yPos: obstacle.yPos, size: obstacle.size, tRexY: tRex.yPos, ducking: tRex.ducking, jumping: tRex.jumping };
+            return { type: obstacle.type, yPos: obstacle.yPos, size: obstacle.size, tRexY: tRex.yPos, bowing: tRex.bowing, jumping: tRex.jumping };
           }
         }
       }
