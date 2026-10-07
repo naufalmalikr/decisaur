@@ -29,9 +29,9 @@ const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
 const CASES = {
   'cactus, close': { scene: 'A large cactus is standing on the ground', gap: 120, truth: 'jump' },
   'cactus, far': { scene: 'A large cactus is standing on the ground', gap: 900, truth: 'hold' },
-  'overhead bird, close': { scene: 'A pterodactyl is flying high in the air, well above the runner', gap: 130, truth: 'bow' },
-  'overhead bird, far': { scene: 'A pterodactyl is flying high in the air, well above the runner', gap: 900, truth: 'hold' },
-  'head-height bird, close': { scene: 'A pterodactyl is flying at the same height as the runner', gap: 130, truth: 'jump' },
+  'overhead bird, close': { scene: 'A bird is flying high in the air, well above the runner', gap: 130, truth: 'bow' },
+  'overhead bird, far': { scene: 'A bird is flying high in the air, well above the runner', gap: 900, truth: 'hold' },
+  'head-height bird, close': { scene: 'A bird is flying at the same height as the runner', gap: 130, truth: 'jump' },
 };
 
 const gapPhrase = (px) => {
@@ -57,7 +57,7 @@ async function probe(label, questions, clearKey, urgentKey) {
     const started = Date.now();
     const response = await client.systemone({
       model,
-      state: `A T-Rex is running along the ground. ${scene.scene}, ${gapPhrase(scene.gap)} ahead.`,
+      state: `A man is running along the ground. ${scene.scene}, ${gapPhrase(scene.gap)} ahead.`,
       questions,
       keep_alive: KEEP_ALIVE,
     });
@@ -94,7 +94,7 @@ await probe(
   {
     clear: {
       type: 'choice',
-      instructions: 'Look at the obstacle ahead of the running T-Rex and say which maneuver would get past it.',
+      instructions: 'Look at the obstacle ahead of the running man and say which maneuver would get past it.',
       criteria: {
         jump: 'Jump over it. Correct when the obstacle stands on the ground or flies at the runner\'s own height.',
         bow: 'Bow under it. Correct when the obstacle flies above the runner with open air underneath.',
@@ -102,7 +102,7 @@ await probe(
     },
     urgent: {
       type: 'noul',
-      instructions: 'Is the obstacle close enough that the T-Rex must act right now rather than keep running for another moment?',
+      instructions: 'Is the obstacle close enough that the man must act right now rather than keep running for another moment?',
     },
   },
   'clear',
@@ -116,7 +116,7 @@ await probe(
     clear: {
       type: 'choice',
       instructions:
-        'A T-Rex runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
+        'A man runs to the right and cannot stop. Say which maneuver clears the obstacle ahead.\n' +
         'Anything standing on the ground must be jumped. A bird flying above the runner must be bowed under. ' +
         'A bird flying at the runner\'s own height must be jumped, because bowing would not fit under it.',
       criteria: {
@@ -126,7 +126,7 @@ await probe(
     },
     urgent: {
       type: 'noul',
-      instructions: 'Is the obstacle close enough that the T-Rex must act right now rather than keep running for another moment?',
+      instructions: 'Is the obstacle close enough that the man must act right now rather than keep running for another moment?',
     },
   },
   'clear',
@@ -140,7 +140,7 @@ await probe(
   {
     clear: {
       type: 'choice',
-      instructions: 'Look at the obstacle ahead of the running T-Rex and say which maneuver would get past it.',
+      instructions: 'Look at the obstacle ahead of the running man and say which maneuver would get past it.',
       criteria: {
         jump: 'Jump over it. Correct when the obstacle stands on the ground or flies at the runner\'s own height.',
         bow: 'Bow under it. Correct when the obstacle flies above the runner with open air underneath.',
@@ -148,7 +148,7 @@ await probe(
     },
     safe: {
       type: 'noul',
-      instructions: 'Can the T-Rex safely keep running for another moment without reaching the obstacle?',
+      instructions: 'Can the man safely keep running for another moment without reaching the obstacle?',
     },
   },
   'clear',
@@ -163,7 +163,7 @@ await probe(
   {
     clear: {
       type: 'choice',
-      instructions: 'Look at the obstacle ahead of the running T-Rex and say which maneuver would get past it.',
+      instructions: 'Look at the obstacle ahead of the running man and say which maneuver would get past it.',
       criteria: {
         jump: 'Jump over it. Correct when the obstacle stands on the ground or flies at the runner\'s own height.',
         bow: 'Bow under it. Correct when the obstacle flies above the runner with open air underneath.',
@@ -175,7 +175,7 @@ await probe(
     },
     actNow: {
       type: 'noul',
-      instructions: 'Is the obstacle close enough that the T-Rex must act right now?',
+      instructions: 'Is the obstacle close enough that the man must act right now?',
     },
   },
   'clear',

@@ -45,25 +45,26 @@ const TRUTH = {
  */
 const WORDINGS = {
   'production: "about head height"':
-    'A pterodactyl is flying in the air, about head height, close ahead of the runner.',
+    'A bird is flying in the air, about head height, close ahead of the runner.',
   '"above the runner"':
-    'A pterodactyl is flying in the air, above the runner, close ahead of the runner.',
+    'A bird is flying in the air, above the runner, close ahead of the runner.',
   '"high above, clear underneath"':
-    'A pterodactyl is flying high above the runner, with clear open space underneath it, close ahead of the runner.',
+    'A bird is flying high above the runner, with clear open space underneath it, close ahead of the runner.',
   '"overhead, level with the dino\'s back"':
-    'A pterodactyl is flying over the runner at the level of the dino\'s back, close ahead of the runner.',
+    'A bird is flying over the runner at the level of the dino\'s back, close ahead of the runner.',
 };
 
 /** The other scenes, at the same distance, held fixed so only the wording varies. */
 const FIXED = {
   'cactus_large@130': 'A large cactus is standing on the ground, very close, almost touching it ahead of the runner.',
-  'bird_body@130': 'A pterodactyl is flying at the same height as the runner, very close, almost touching it ahead of the runner.',
-  'bird_sky_high@130': 'A pterodactyl is flying high in the air, well above the runner, very close, almost touching it ahead of the runner.',
+  'bird_body@130': 'A bird is flying at the same height as the runner, very close, almost touching it ahead of the runner.',
+  'bird_sky_high@130': 'A bird is flying high in the air, well above the runner, very close, almost touching it ahead of the runner.',
   'cactus_large@400': 'A large cactus is standing on the ground, some way off ahead of the runner.',
   'bird_overhead@400': null,
 };
 
-const HEAD = 'A T-Rex is running to the right. It is running along the ground.';
+/** Production's own subject wording, from `describeDino()` in `../core/vocabulary.js`. */
+const HEAD = 'A man is running to the right. It is running along the ground.';
 
 for (const [label, overhead] of Object.entries(WORDINGS)) {
   console.log(`\n=== ${label} ===`);

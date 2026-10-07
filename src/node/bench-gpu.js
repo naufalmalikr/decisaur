@@ -61,9 +61,9 @@ import { QUESTIONS } from '../ollama/decider.js';
 
 /** Scene descriptions reused across both phases; only what is on screen, never the class. */
 const SCENES = [
-  'The T-Rex is running on the ground. A cactus stands on the ground ahead of it, blocking the way.',
-  'The T-Rex is running on the ground. A pterodactyl flies high in the air above the T-Rex, clear underneath.',
-  'The T-Rex is running on the ground. A pterodactyl flies low, at the height of the T-Rex.',
+  'The man is running on the ground. A cactus stands on the ground ahead of it, blocking the way.',
+  'The man is running on the ground. A bird flies high in the air above the man, clear underneath.',
+  'The man is running on the ground. A bird flies low, at the height of the man.',
 ];
 
 const GENERATE_PROMPT = SCENES[0];

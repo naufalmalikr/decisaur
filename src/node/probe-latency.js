@@ -10,7 +10,7 @@
  * `noul`s on both axes at once, and pins down per-question latency.
  *
  *   node src/node/probe-latency.js
- */
+ *
  * SUPERSEDED - kept as a historical record, not a description of the current design.
  *
  * This probe tests the obstacle-*class* question, which production no longer uses. The
@@ -28,15 +28,15 @@ const client = new Ollama({ host: process.env.OLLAMA_HOST ?? DEFAULT_HOST });
 const model = process.env.DECISAUR_MODEL ?? DEFAULT_MODEL;
 
 const CASES = {
-  'cactus_large': 'The T-Rex is running on the ground. A cactus stands on the ground ahead of it, blocking the way.',
-  'bird_high': 'The T-Rex is running on the ground. A pterodactyl flies high in the air above the T-Rex, clear underneath.',
-  'bird_low': 'The T-Rex is running on the ground. A pterodactyl flies low, at the height of the T-Rex.',
+  'cactus_large': 'The man is running on the ground. A cactus stands on the ground ahead of it, blocking the way.',
+  'bird_high': 'The man is running on the ground. A bird flies high in the air above the man, clear underneath.',
+  'bird_low': 'The man is running on the ground. A bird flies low, at the height of the man.',
 };
 
 const CLASS_Q = {
   kind: {
     type: 'choice',
-    instructions: 'Identify the obstacle ahead so the T-Rex can choose a maneuver.',
+    instructions: 'Identify the obstacle ahead so the man can choose a maneuver.',
     criteria: {
       cactus: 'A cactus or other solid object resting on the ground.',
       bird_high: 'A bird flying high overhead, which can be bowed under.',

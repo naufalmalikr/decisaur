@@ -82,7 +82,13 @@ import { DEFAULT_HOST, DEFAULT_MODEL, KEEP_ALIVE, LOOP } from '../config.js';
  * `criteria` doubles as the label space, so both entries are written to describe the
  * situation each maneuver is for rather than to order the model.
  * 
- * Intentionally use "man" instead of "t-rex" to avoid the model's learned bias that a t-rex cannot bow.
+ * "man", not "T-Rex", originally on the theory that this model carries a learned picture of
+ * a dinosaur that does not duck. That has been measured and does not hold: varying the
+ * noun in `describeState()` (`../core/vocabulary.js`) against these questions gives 13/15
+ * either way, with `clear` naming `bow` zero times in both. The noun is kept consistent
+ * with the scene description because a prompt that names the same runner two different ways
+ * is a trap to edit, not because it scores better. `bow` being unreachable is a fault in
+ * the question set - see `probe-decompose.js` and the rule sentence this one dropped.
  */
 export const QUESTIONS = {
   clear: {

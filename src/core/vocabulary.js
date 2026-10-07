@@ -51,7 +51,7 @@ export function describeObstacle(obstacle, centreDistance) {
         : obstacle.y <= 85
           ? 'in the air, above the runner'
           : 'at the same height as the runner';
-    return `A pterodactyl is flying ${height}, ${distance} ahead of the runner.`;
+    return `A bird is flying ${height}, ${distance} ahead of the runner.`;
   }
   const size = obstacle.width >= 25 ? 'A large cactus' : 'A small cactus';
   return `${size} is standing on the ground, ${distance} ahead of the runner.`;
@@ -59,6 +59,18 @@ export function describeObstacle(obstacle, centreDistance) {
 
 /**
  * Describe the dino for the model.
+ *
+ * "A man", not "A T-Rex", matching `QUESTIONS` in `../ollama/decider.js`. The reason
+ * given for that swap was a learned dinosaur bias that would stop the model bowing, and
+ * that has now been measured and does not hold: the same 15 replay scenes score 13/15
+ * under either noun, with `clear` naming `bow` zero times in both. The only movement is
+ * in how flat the distribution comes out - `jump` sits at 0.66 under "man" and 0.73 under
+ * "A T-Rex" - so the species is not where the bias lives.
+ *
+ * Kept as "man" because a prompt that calls the same runner two different things is a
+ * trap for whoever edits it next, not because it buys accuracy. `bow` being unreachable
+ * is a fault in the question set, not in this sentence; see `QUESTIONS` and
+ * `probe-decompose.js`.
  *
  * @param {import('./state.js').BotState} state
  * @returns {string}
@@ -69,7 +81,7 @@ export function describeDino(state) {
     : state.tRex.bowing
       ? 'It is sliding along the ground.'
       : 'It is running along the ground.';
-  return `A T-Rex is running to the right. ${posture}`;
+  return `A man is running to the right. ${posture}`;
 }
 
 /**

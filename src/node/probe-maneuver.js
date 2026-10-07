@@ -35,9 +35,9 @@ const CASES = {
   'large cactus, close': { dino: 'running along the ground', obstacle: 'A large cactus is standing on the ground', gap: 120, truth: 'jump' },
   'large cactus, far': { dino: 'running along the ground', obstacle: 'A large cactus is standing on the ground', gap: 900, truth: 'hold' },
   'small cactus, close': { dino: 'running along the ground', obstacle: 'A small cactus is standing on the ground', gap: 140, truth: 'jump' },
-  'bird overhead, close': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying high in the air, well above the runner', gap: 130, truth: 'bow' },
-  'bird overhead, far': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying high in the air, well above the runner', gap: 900, truth: 'hold' },
-  'bird at head height, close': { dino: 'running along the ground', obstacle: 'A pterodactyl is flying at the same height as the runner', gap: 130, truth: 'jump' },
+  'bird overhead, close': { dino: 'running along the ground', obstacle: 'A bird is flying high in the air, well above the runner', gap: 130, truth: 'bow' },
+  'bird overhead, far': { dino: 'running along the ground', obstacle: 'A bird is flying high in the air, well above the runner', gap: 900, truth: 'hold' },
+  'bird at head height, close': { dino: 'running along the ground', obstacle: 'A bird is flying at the same height as the runner', gap: 130, truth: 'jump' },
 };
 
 /** @param {string} label @param {(c: any) => string} stateFor @param {Record<string, any>} questions */
@@ -96,13 +96,13 @@ const CRITERIA = {
 // --- Variant A: the wording in production today, but with distance added -------
 await probe(
   'A. sentence state with distance',
-  (s) => `A T-Rex is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
+  (s) => `A man is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
   {
     maneuver: {
       type: 'choice',
       instructions:
-        'A T-Rex runs to the right at constant speed and cannot stop or reverse. ' +
-        'One obstacle is approaching. Choose the maneuver that gets the T-Rex past it alive.',
+        'A man runs to the right at constant speed and cannot stop or reverse. ' +
+        'One obstacle is approaching. Choose the maneuver that gets the man past it alive.',
       criteria: CRITERIA,
     },
   },
@@ -112,14 +112,14 @@ await probe(
 await probe(
   'B. distance stated explicitly',
   (s) =>
-    `A T-Rex is ${s.dino}. ${s.obstacle} ahead of it.` +
+    `A man is ${s.dino}. ${s.obstacle} ahead of it.` +
     ` The obstacle is ${s.gap} pixels away - ${gapPhrase(s.gap)}.`,
   {
     maneuver: {
       type: 'choice',
       instructions:
-        'A T-Rex runs to the right at constant speed and cannot stop or reverse. ' +
-        'One obstacle is approaching. Choose the maneuver that gets the T-Rex past it alive.',
+        'A man runs to the right at constant speed and cannot stop or reverse. ' +
+        'One obstacle is approaching. Choose the maneuver that gets the man past it alive.',
       criteria: CRITERIA,
     },
   },
@@ -128,12 +128,12 @@ await probe(
 // --- Variant C: the rules of the game spelled out as tactics -------------------
 await probe(
   'C. explicit tactical rules',
-  (s) => `A T-Rex is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
+  (s) => `A man is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
   {
     maneuver: {
       type: 'choice',
       instructions:
-        'Choose the next move for a running T-Rex.\n' +
+        'Choose the next move for a running man.\n' +
         'Rules of the game: a jump clears anything standing on the ground. ' +
         'A bow clears a bird flying high overhead. A bird flying at the runner\'s own height must be jumped. ' +
         'When the obstacle is still far away, do nothing and keep running.',
@@ -151,21 +151,21 @@ await probe(
 // asking a 0.8b model to hold an obstacle class and a distance in mind at once.
 await probe(
   'D. class + urgency as two questions',
-  (s) => `A T-Rex is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
+  (s) => `A man is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
   {
     kind: {
       type: 'choice',
-      instructions: 'Look at the obstacle ahead of the running T-Rex and say what kind of obstacle it is.',
+      instructions: 'Look at the obstacle ahead of the running man and say what kind of obstacle it is.',
       criteria: {
         cactus: 'A cactus or other solid object standing on the ground.',
         bird_high: 'A bird flying high above the ground, with open space underneath it.',
-        bird_low: 'A bird flying at the same height as the T-Rex.',
+        bird_low: 'A bird flying at the same height as the man.',
       },
     },
     urgent: {
       type: 'noul',
       instructions:
-        'Is the obstacle close enough that the T-Rex must act right now rather than keep running for another moment?',
+        'Is the obstacle close enough that the man must act right now rather than keep running for another moment?',
     },
   },
   'kind',
@@ -174,20 +174,20 @@ await probe(
 // --- Variant E: the same pair, but urgency phrased as a yes/no on action -------
 await probe(
   'E. class + "must act now" phrased positively',
-  (s) => `A T-Rex is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
+  (s) => `A man is ${s.dino}. ${s.obstacle}, ${gapPhrase(s.gap)} ahead.`,
   {
     kind: {
       type: 'choice',
-      instructions: 'Look at the obstacle ahead of the running T-Rex and say what kind of obstacle it is.',
+      instructions: 'Look at the obstacle ahead of the running man and say what kind of obstacle it is.',
       criteria: {
         cactus: 'A cactus or other solid object standing on the ground.',
         bird_high: 'A bird flying high above the ground, with open space underneath it.',
-        bird_low: 'A bird flying at the same height as the T-Rex.',
+        bird_low: 'A bird flying at the same height as the man.',
       },
     },
     mustActNow: {
       type: 'noul',
-      instructions: 'Can the T-Rex keep running for another moment without hitting the obstacle?',
+      instructions: 'Can the man keep running for another moment without hitting the obstacle?',
     },
   },
   'kind',

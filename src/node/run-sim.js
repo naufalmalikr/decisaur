@@ -79,7 +79,7 @@ class ScriptedDecider {
       return null;
     }
 
-    const seesBird = state.includes('pterodactyl');
+    const seesBird = state.includes('bird');
     const overhead = state.includes('well above the runner') || state.includes('above the runner,');
     const close = state.includes('very close') || state.includes('close ahead');
     let maneuver;

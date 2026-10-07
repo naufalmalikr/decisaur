@@ -7,7 +7,7 @@
  * question encoding being wrong.
  *
  *   node src/node/probe-prompt.js
- */
+ *
  * SUPERSEDED - kept as a historical record, not a description of the current design.
  *
  * This probe tests the obstacle-*class* question, which production no longer uses. The
@@ -82,8 +82,8 @@ const Q_PRODUCTION = {
   maneuver: {
     type: 'choice',
     instructions:
-      'A T-Rex runs to the right at constant speed and cannot stop or reverse. ' +
-      'One obstacle is approaching. Choose the maneuver that gets the T-Rex past it alive.',
+      'A man runs to the right at constant speed and cannot stop or reverse. ' +
+      'One obstacle is approaching. Choose the maneuver that gets the man past it alive.',
     criteria: {
       jump: 'Jump: press space to leap over the obstacle.',
       bow: 'Bow: press down to slide underneath the obstacle.',
@@ -97,9 +97,9 @@ await probe('A. production (JSON state, production question)', (s) => s, Q_PRODU
 const stateToText = (s) => {
   const o = s.obstacle;
   if (o.ground) {
-    return `The T-Rex is running on the ground at speed ${s.dino.speed}. A ${o.kind.replace('_', ' ')} is on the ground ahead, ${s.gap_px} pixels away. It is too tall to bow under.`;
+    return `The man is running on the ground at speed ${s.dino.speed}. A ${o.kind.replace('_', ' ')} is on the ground ahead, ${s.gap_px} pixels away. It is too tall to bow under.`;
   }
-  return `The T-Rex is running on the ground at speed ${s.dino.speed}. A pterodactyl is flying ahead at height ${o.y}, ${s.gap_px} pixels away. It flies high enough to bow under.`;
+  return `The man is running on the ground at speed ${s.dino.speed}. A bird is flying ahead at height ${o.y}, ${s.gap_px} pixels away. It flies high enough to bow under.`;
 };
 await probe('B. plain-English state string', stateToText, Q_PRODUCTION);
 
@@ -108,7 +108,7 @@ const Q_TACTICAL = {
   maneuver: {
     type: 'choice',
     instructions:
-      'Choose the next move for a running T-Rex.\n' +
+      'Choose the next move for a running man.\n' +
       'Rules of the game: a jump clears anything on the ground. A bow clears a bird flying overhead. ' +
       'A bird flying at head height must be jumped. Take no action when the obstacle is still far away.',
     criteria: {
@@ -124,7 +124,7 @@ await probe('C. english state + tactical rules', stateToText, Q_TACTICAL);
 const stateRules = (s) =>
   s.obstacle.ground
     ? 'The obstacle ahead is a cactus sitting on the ground.'
-    : 'The obstacle ahead is a pterodactyl flying high above the ground.';
+    : 'The obstacle ahead is a bird flying high above the ground.';
 await probe('D. categorical state only', stateRules, Q_TACTICAL);
 
 // --- Variant E: the real discriminator - ask the model two binary questions -
@@ -139,7 +139,7 @@ const Q_BINARY = {
   },
   immediate: {
     type: 'noul',
-    instructions: 'Is the obstacle close enough that the T-Rex must act within the next half second?',
+    instructions: 'Is the obstacle close enough that the man must act within the next half second?',
   },
 };
 console.log('\n=== E. three binary perceptions (noul) ===');
