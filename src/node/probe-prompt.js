@@ -13,8 +13,9 @@
  * This probe tests the obstacle-*class* question, which production no longer uses. The
  * class is distance-invariant and cannot express `hold`, so the maneuver had to be
  * recovered through a lookup table. It is kept because it is the first measurement that ruled the
- * maneuver-question approach out, and because its latency-vs-question-count numbers are still the ones
- * quoted in `decider.js`. For the question that ships, see `probe-decompose.js`.
+ * maneuver-question approach out. Its latency-vs-question-count numbers are stale - see
+ * `probe-latency.js` and the measured table in the README. For the question that ships, see
+ * `probe-decompose.js`.
  */
 
 

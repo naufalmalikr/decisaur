@@ -45,9 +45,9 @@
  *   - maneuver : `hold` when `urgent` says no, otherwise whatever `clear` chose.
  *
  * Measured on the six probe scenes spanning all three maneuvers, this reached 5/5,
- * the only framing that ever got `bow` right without losing `hold`. It costs ~370ms
- * against ~260ms for the single class question, because two questions are more work
- * than one.
+ * the only framing that ever got `bow` right without losing `hold`. It costs more than
+ * a single question: re-measured 2026-10-08, `clear` alone is p50 58ms and `clear`+`urgent`
+ * together are p50 170ms, so the second question roughly triples the round trip.
  *
  * The honest caveat, which `policy.js` records at the point of use: `clear` scores a
  * reported confidence of 0.000-0.054 on correct answers. The argmax is right and the
@@ -241,7 +241,7 @@ export class Decider {
    * once - which was right when the model named an obstacle *class*, a distance-
    * invariant property - returned `hold` at 460px and cached it for good, so the dino
    * ran into the cactus it was told to wait for. Two bands per obstacle is what the
-   * timing allows: at the top speed of 13px/frame the ~240ms round trip is ~180px of
+   * timing allows: at the top speed of 13px/frame the ~170ms round trip is ~130px of
    * travel, so a query fired on entering `near` still lands inside the clearance
    * window, which `JUMP_AIM` sits past the middle of for exactly this reason.
    *

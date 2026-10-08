@@ -4,7 +4,7 @@
  * Probe 1 showed:
  *   - multi-way `choice` questions discriminate jump-vs-bow but never `hold`
  *   - binary `noul` questions separate ground-vs-air very cleanly (0.99 / 0.09)
- *   - latency scales with question count (~300ms for 1, ~580ms for 3)
+ *   - latency scales with question count (~60ms for 1, ~230ms for 3)
  *
  * This run checks whether a single `choice` over *obstacle classes* beats two
  * `noul`s on both axes at once, and pins down per-question latency.
@@ -16,8 +16,12 @@
  * This probe tests the obstacle-*class* question, which production no longer uses. The
  * class is distance-invariant and cannot express `hold`, so the maneuver had to be
  * recovered through a lookup table. It is kept because it is the measurement that ruled
- * that design out, and because its latency-vs-question-count numbers are still the ones
- * quoted in `decider.js`. For the question that ships, see `probe-decompose.js`.
+ * that design out.
+ *
+ * Its latency-vs-question-count numbers are NOT the ones quoted in `decider.js` any more.
+ * Re-measured 2026-10-08 (1 question p50 58ms, 2 questions 170ms, 3 questions 234ms, after
+ * ~50 warm queries) - the figures in this header were taken cold and read ~2x high. For the
+ * question that ships, see `probe-decompose.js`.
  */
 
 

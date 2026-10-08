@@ -476,7 +476,8 @@ if (systemoneResults.length > 0) {
   const p50 = c1 ? percentile(c1.sorted, 50) : NaN;
   console.log('');
   console.log(`System One: p50 ${fmtMs(p50)} per decision at concurrency 1 - this is the latency budget the`);
-  console.log(`game loop lives inside, not the tok/s figures above. README claims 67-280ms for this endpoint.`);
+  console.log(`game loop lives inside, not the tok/s figures above. README measures p50 170ms / p95 203ms for this`);
+  console.log(`endpoint - but only after ~50 warm queries, and only with the model resident in VRAM.`);
 }
 
 process.exit(0);

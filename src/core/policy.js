@@ -2,7 +2,7 @@
  * Decision policy: the seam between what the model perceives and what the dino does.
  *
  * The model is asked which maneuver clears the obstacle and whether it needs acting on
- * yet, and it takes ~260-370ms to answer while the game runs at 60Hz and the dino dies
+ * yet, and it takes ~170ms to answer while the game runs at 60Hz and the dino dies
  * on contact. So the question of whether its answer is allowed to act has to be asked
  * explicitly, and the honest answer here is that **it is not gated at all**.
  *
@@ -18,7 +18,7 @@
  *
  * So `resolveManeuver()` gives the model sole authority over the action, and the
  * reflex layer is left with exactly one job: to act while there is no answer yet. That
- * is not a cosmetic fallback - at ~370ms against a ~600ms perception range, most of
+ * is not a cosmetic fallback - at ~170ms against a ~590ms perception range, ~71% of
  * every approach has no model opinion available.
  *
  * What this costs is stated plainly rather than discovered later: the model can now be
@@ -42,8 +42,8 @@
  *
  * Only two things can stop it, and neither is a gate on its opinion:
  *
- *  - **No answer yet.** The obstacle is visible for ~600ms and the model needs ~370ms
- *    to reply, so a large fraction of every approach is served by the reflex. That is
+ *  - **No answer yet.** The obstacle is visible for ~590ms and the model needs ~170ms
+ *    to reply, so ~71% of every approach is served by the reflex. That is
  *    the reflex's remaining job and the only reason it survives.
  *  - **A failed or nonsensical answer.** An unreachable Ollama, or a response where
  *    neither question parsed, has no opinion to act on and falls back.

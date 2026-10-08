@@ -1,7 +1,7 @@
 /**
  * Reflex layer: the part of the bot that always works.
  *
- * The model is consulted about once per obstacle and needs ~100-260ms to answer,
+ * The model is consulted about once per obstacle and needs ~170ms to answer,
  * while an obstacle is on screen roughly 0.6-0.9s before contact. For much of
  * every approach there is no model opinion available, and a slow model must never
  * be able to kill the dino. This module decides from collision geometry alone and

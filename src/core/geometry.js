@@ -4,7 +4,7 @@
  * The decision model answers *what is in front of the dino*. This module answers
  * *whether a maneuver survives*, which is a question about collision geometry and
  * physics rather than about perception - and physics is precisely what a model
- * call taking 100-260ms is bad at. Keeping the two apart is what lets the bot
+ * call taking ~170ms is bad at. Keeping the two apart is what lets the bot
  * survive a slow model.
  *
  * Constants are read off the live game every frame and fall back to
@@ -28,7 +28,7 @@ export const CLEARANCE_MARGIN = 2;
  * without it.
  *
  * Boundaries follow the real timing rather than round numbers. At the game's top speed
- * of 13px/frame the ~260-370ms model round trip is 170-290px of travel, so anything
+ * of 13px/frame the ~170ms model round trip is ~130px of travel, so anything
  * beyond a few hundred pixels is comfortably decidable before contact, and anything
  * inside 200px is already inside the jump window.
  *

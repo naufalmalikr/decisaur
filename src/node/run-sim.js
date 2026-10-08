@@ -43,7 +43,7 @@ function parseArgs(argv) {
 
 /**
  * A stand-in for the System One model that answers from a fixed policy instead of
- * from Ollama. Lets the harness measure the pipeline without a 100-260ms round
+ * from Ollama. Lets the harness measure the pipeline without a ~170ms round
  * trip per obstacle, and lets it prove the confidence gate actually protects the
  * dino when the model is wrong.
  */
@@ -283,6 +283,7 @@ if (args.mode === 'reflex') {
   console.log('adversarial model always returns a confident wrong class; the gate should absorb all of it.');
 } else {
   console.log(`model latency avg ${decider.averageLatencyMs.toFixed(0)}ms over ${decider.stats.queries} queries, ${decider.stats.failures} failures`);
+  console.log('  ^ warmup-sensitive: the runner needs ~50 queries to settle, so a short run reads high.');
 }
 
 if (args.noReflex) {

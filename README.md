@@ -3,19 +3,6 @@
 Bot for Chrome T-Rex Runner (`chrome://dino`) whose maneuver is chosen by a local
 Ollama **System One** model (`tev1:0.8b`) over `POST /v1/systemone`.
 
-Thesis, measured not asserted: **the model cannot improve the score.**
-Geometry already determines the correct maneuver, so a perfect model ties reflex
-and a real one dies.
-
-```
-reflex only     5/5 survived    score 5888    (no model)
---oracle        5/5 survived    score 5888    (perfect model, ~90% accuracy)
---model         0/5 survived    score ~700    (real tev1:0.8b, ~73%, dies on birds)
---adversarial   0/5 survived    score 13      (always wrong, always confident)
-```
-
-Same seeds, 20000 frames each. Every `--model` crash is a pterodactyl.
-
 ---
 
 ## Run
@@ -43,13 +30,8 @@ google-chrome --disable-features=LocalNetworkAccessChecks
 npm run proxy   # 127.0.0.1:11436 -> 127.0.0.1:11434, drops Origin upstream
 ```
 
-Then: open `chrome://dino` → <kbd>F12</kbd> Console →
-
-```js
-decisaurHost = 'http://127.0.0.1:11436';
-```
-
-→ paste one bundle from `dist/` → click the game → <kbd>Space</kbd>.
+Then: open `chrome://dino` → <kbd>F12</kbd> Console → paste one bundle from `dist/` →
+click the game → <kbd>Space</kbd>.
 
 | Bundle | `useModel` | `useReflex` | Use for |
 |---|---|---|---|
@@ -101,7 +83,7 @@ wait, policy decides whether the model may act (it may — nothing is gated).
 
 | Layer | Answers | Latency | Source |
 |---|---|---|---|
-| Model (`src/ollama/decider.js`) | jump / bow / hold? | ~240–370ms | ~73% accurate |
+| Model (`src/ollama/decider.js`) | jump / bow / hold? | ~170ms (p95 ~200ms) | ~73% accurate |
 | Geometry (`core/classify,geometry,reflex.js`) | when is a jump survivable? what until then? | ~0 / frame | exact |
 | Policy (`core/policy.js`) | is the model allowed to act? | ~0 | ungated by design |
 
@@ -178,7 +160,7 @@ A maneuver is a function of **distance**, not just shape: same bird wants `hold`
 at 900px, `bow` at 130px. Dedup is per `(token, band)`:
 
 - `far` band: entered at 460px (`DECISAUR_PERCEPTION_RANGE`).
-- `near` band: re-asked at ≤300px (`NEAR_BAND_PX`, `controller.js:48`). At 13px/frame the ~240ms round trip is ~180px of travel — the latest a second answer can still land in the window.
+- `near` band: re-asked at ≤300px (`NEAR_BAND_PX`, `controller.js:48`). At 13px/frame the ~170ms round trip is ~130px of travel — the latest a second answer can still land in the window.
 - Max 1 in flight (`DECISAUR_MAX_CONCURRENT`); failed near-band re-query never overwrites a good far-band answer.
 
 ### Why there is no gate
@@ -188,7 +170,7 @@ The argmax is right; the distribution is flat — the model can't say *how sure*
 it is. Any confidence floor rejects everything including right answers, so
 `resolveManeuver` (`policy.js:61`) applies none. Only non-opinions fall back to reflex:
 
-- no answer yet (~600ms visibility vs ~240–370ms round trip → reflex owns most of every approach),
+- no answer yet (~590ms visibility vs ~170ms round trip → reflex owns ~71% of every approach),
 - query failed / `clear` named nothing usable.
 
 `PolicyStats.scoreManeuver` scores every model answer against geometry **after**
@@ -200,6 +182,31 @@ acting on it — visible in HUD and `npm run replay`, never silent.
 jumpable one. The worst string: yPos-75 described as "head height" made the
 model follow the jump rule correctly and die; "above the runner" fixed it
 (`probe-wording.js`, 66.7% → 73.3% on `replay`).
+
+---
+
+## Measured, and what the number costs
+
+Round trip is a `POST /v1/systemone` with the production `QUESTIONS` at concurrency 1,
+measured through the proxy on a GTX 1050 Ti Max-Q with `tev1:0.8b` resident in VRAM:
+
+| | p50 | p95 | range | n |
+|---|---|---|---|---|
+| 1 question (`clear`) | 58ms | 92ms | 55–197ms | 40 |
+| 2 questions (`clear`+`urgent`, production) | **170ms** | **203ms** | 161–214ms | 40 |
+| 3 questions | 234ms | 320ms | 222–461ms | 40 |
+| cold start (model not resident) | 3393ms | — | 3121–3661ms | 5 |
+
+Two traps in measuring this, both of which produced wrong numbers first:
+
+- **Warm up ~50 queries.** The first handful after a load sit at ~380ms and drift down to
+  ~170ms. Timing from cold reports a slow model that is not slow. With warmup the
+  distribution is unimodal (164–217ms over 120 samples) — the apparent second mode was warmup.
+- **Keep the model resident.** `keep_alive: 0` then a query costs ~3.4s, 20x the round trip.
+  This is the keep-alive that matters. HTTP keep-alive on the proxy is worth ~0.2ms of
+  transport (measured on a trivial `GET /api/version`, 60 samples), ~6ms end-to-end at the
+  noise edge — it does reuse sockets, 12 requests over 1 connection, but loopback handshakes
+  are free next to a 170ms forward pass. The round trip is inference-bound.
 
 ---
 
@@ -240,8 +247,8 @@ Config (`.env`, all required — missing key fails build, never defaults):
 |---|---|---|
 | `DECISAUR_HOST` | `http://127.0.0.1:11434` | full URL (not `OLLAMA_HOST`, which is bare host+port for the proxy) |
 | `DECISAUR_MODEL` | `tev1:0.8b` | System One decision head |
-| `DECISAUR_KEEP_ALIVE` | `10m` | cold start costs ~300ms |
-| `DECISAUR_PERCEPTION_RANGE` | `460` | ~590ms warning at top speed vs ~260ms round trip |
+| `DECISAUR_KEEP_ALIVE` | `10m` | cold start costs ~3.4s — 20x the round trip |
+| `DECISAUR_PERCEPTION_RANGE` | `460` | ~590ms warning at top speed vs ~170ms round trip |
 | `DECISAUR_MAX_CONCURRENT` | `1` | server serialises anyway |
 | `DECISAUR_JUMP_AIM` | `0.54` | swept (`sweep-aim.js`), sharply peaked; late aim is fatal |
 

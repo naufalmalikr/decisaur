@@ -94,7 +94,7 @@ export const HOST = CONFIG.host;
  */
 export const MODEL = CONFIG.model;
 
-/** How long Ollama keeps the model resident; a cold start costs ~300ms. */
+/** How long Ollama keeps the model resident; a cold start costs ~3.4s - 20x the round trip. */
 export const KEEP_ALIVE = CONFIG.keepAlive;
 
 /** Perception and actuation cadence. */
@@ -103,7 +103,7 @@ export const LOOP = Object.freeze({
    * How far ahead, in game pixels, an obstacle enters the model's field of view.
    *
    * Sized from the round trip rather than picked: at the game's top speed of
-   * 13px/frame @60fps, 460px is ~590ms of warning against a ~260ms query.
+   * 13px/frame @60fps, 460px is ~590ms of warning against a ~170ms query (p95 ~200ms).
    */
   perceptionRange: CONFIG.perceptionRange,
   /** Hard cap on concurrent queries; the server serialises small models anyway. */

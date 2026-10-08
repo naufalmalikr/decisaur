@@ -11,8 +11,8 @@
  * `useModel` asks whether the model is consulted at all. `useReflex` asks what happens
  * during the window before it answers: with it, the reflex geometry serves every frame
  * the model has not yet replied for; without it, the dino does nothing until the model
- * commits. That window is real rather than theoretical - ~370ms of round trip against a
- * ~600ms perception range means the reflex is in charge for much of every approach.
+ * commits. That window is real rather than theoretical - ~170ms of round trip against a
+ * ~590ms perception range means the reflex is in charge for ~71% of every approach.
  *
  * The reflex plan is computed either way. It carries the target, the prompt distance,
  * and the geometric reference the scoring needs, so only its *action* stops being
@@ -39,11 +39,15 @@ import { LOOP } from '../config.js';
 /**
  * Distance at which an obstacle moves from the `far` approach band to `near`, in px.
  *
- * Chosen so the second query's ~240ms round trip still lands inside the clearance
- * window. At the game's top speed of 13px/frame that is ~180px of travel, putting the
- * answer around 120px - late, but `JUMP_AIM` sits past the middle of the window
+ * Chosen so the second query's ~170ms round trip still lands inside the clearance
+ * window. At the game's top speed of 13px/frame that is ~130px of travel, putting the
+ * answer around 170px - late, but `JUMP_AIM` sits past the middle of the window
  * precisely so a slightly late jump still clears. At the opening speed of 6px/frame it
- * is ~50px of travel and the answer is comfortably early.
+ * is ~60px of travel and the answer is comfortably early.
+ *
+ * Re-measured 2026-10-08: the round trip is p50 170ms / p95 203ms (see the README
+ * table for conditions). The old ~240ms figure was warmup contamination, not a slow
+ * model - timing before ~50 warm queries reads ~380ms and drifts down.
  */
 const NEAR_BAND_PX = 300;
 
@@ -165,7 +169,7 @@ export class Controller {
     this.stats.record(outcome);
 
     // A jump the model chose still has to be *timed*, and timing is not a decision.
-    // The model's round trip is ~240ms - roughly 180px of travel at the game's top
+    // The model's round trip is ~170ms - roughly 130px of travel at the game's top
     // speed - while the clearance window sits around 234px out. Firing the moment the
     // answer lands puts the dino on the obstacle instead of over it, which is how this
     // path died at frame 86 before the window was introduced.

@@ -154,6 +154,10 @@ console.log(
 );
 console.log(`model used for ${summary.model}/${summary.total} decisions (${(summary.modelShare * 100).toFixed(0)}%)`);
 console.log(`latency avg ${decider.averageLatencyMs.toFixed(0)}ms  slowest ${slowest}ms`);
+console.log(
+  '  ^ 15 queries is far too few to time. The runner needs ~50 queries before it settles, so a',
+  '\n   cold run reads ~360ms here and a warm one ~178ms. Trust the README figure (p50 170ms), not this line.',
+);
 console.log(`queries ${decider.stats.queries}  failures ${decider.stats.failures}  tokens ${decider.stats.tokens}`);
 if (summary.topReasons.length > 0) {
   console.log('reflex fallbacks:');
