@@ -17,6 +17,46 @@
 import { describeDistance } from './geometry.js';
 
 /**
+ * The three flight bands a bird can be in, as raw `yPos` ceilings.
+ *
+ * `PTERODACTYL.yPos` is `[100, 75, 50]` (`./constants.js`) and the collision extent runs
+ * `yPos + 8` to `yPos + 27`, so those three values land the bird on the runner's body
+ * (100 → 108-127, blocks stand *and* bow → jump), across its head (75 → 83-102, clears a
+ * bow → bow) and over it (50 → 58-77, clears a run → nothing to do). Every yPos in
+ * between falls in the band above it, which is why these are ceilings rather than
+ * three hard-coded heights.
+ *
+ * The bands are ordered high-first because `yPos` grows downward, so the *lowest*
+ * flying bird is the last entry. The wording is the load-bearing part, not the threshold:
+ * `QUESTIONS.clear` quotes these phrases back verbatim, because a rule naming words the
+ * sentence never used does not reach the model. They are plain altitude words - low,
+ * middle, high - because the previous relative phrasing ("above the runner", "at the same
+ * height as the runner") had to be explained by the rule and still left the yPos-75 bird
+ * reading as a body-level one, which the model then jumped into.
+ *
+ * `overhead` marks the band whose nearest distance band cannot claim contact; see
+ * `describeDistance()`.
+ */
+const BIRD_BANDS = [
+  { maxY: 60, phrase: 'high in the air', overhead: true },
+  { maxY: 85, phrase: 'at middle height in the air', overhead: false },
+  { maxY: Infinity, phrase: 'low in the air', overhead: false },
+];
+
+/**
+ * Which flight band a bird's `yPos` falls in.
+ *
+ * Falls back to the lowest band on a non-finite `yPos`, which `readState()` should never
+ * produce but which must not turn into a crash inside the game loop.
+ *
+ * @param {number} yPos
+ * @returns {{maxY: number, phrase: string, overhead: boolean}}
+ */
+function birdBand(yPos) {
+  return BIRD_BANDS.find((band) => yPos <= band.maxY) ?? BIRD_BANDS[BIRD_BANDS.length - 1];
+}
+
+/**
  * Describe an obstacle for the model, in plain English.
  *
  * Three findings drove this format, all measured against `tev1:0.8b`:
@@ -37,24 +77,14 @@ import { describeDistance } from './geometry.js';
  * @returns {string}
  */
 export function describeObstacle(obstacle, centreDistance) {
-  const distance = describeDistance(centreDistance);
   if (obstacle.airborne) {
-    // The yPos 75 band is the one that decides whether the model bows or jumps, and
-    // the wording matters more than anything else in this file. It was "about head
-    // height", which the model read as a body-level bird and jumped - a fatal answer -
-    // because the clearance rules in `QUESTIONS.clear` say a bird at head height must
-    // be jumped. Describing it as "above the runner" instead took the same scene from
-    // 2/6 to 4/6 (`node src/node/probe-wording.js`).
-    const height =
-      obstacle.y <= 60
-        ? 'high in the air, well above the runner'
-        : obstacle.y <= 85
-          ? 'in the air, above the runner'
-          : 'at the same height as the runner';
-    return `A bird is flying ${height}, ${distance} ahead of the runner.`;
+    const band = birdBand(obstacle.y);
+    const distance = describeDistance(centreDistance, { overhead: band.overhead });
+    return `A bird is flying ${band.phrase}, ${distance} the runner.`;
   }
+  const distance = describeDistance(centreDistance);
   const size = obstacle.width >= 25 ? 'A large cactus' : 'A small cactus';
-  return `${size} is standing on the ground, ${distance} ahead of the runner.`;
+  return `${size} is standing on the ground, ${distance} the runner.`;
 }
 
 /**

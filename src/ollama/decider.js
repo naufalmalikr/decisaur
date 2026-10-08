@@ -80,16 +80,26 @@ import { HOST, MODEL, KEEP_ALIVE, LOOP } from '../config.js';
  * question, scored 3/5 and never picked `bow`, while this wording scored 5/5.
  *
  * The rules must also cover every scene shape `vocabulary.js` can send, because the
- * model answers only from the rule that names its sentence's own words. With the
- * first two rules alone, a body-height bird - sent as *"at the same height as the
- * runner"*, the yPos 100 scene - was covered by neither rule, and the model guessed
- * `bow`: it slid underneath a bird it had to clear, which is the crash that followed
- * the perception fix once bird sentences first reached the model at all. Adding the
- * third rule, quoting the description's own phrase, flips `bird_body@130` from
- * `bow` 3/3 wrong to `jump` 3/3 right with no movement on any other scene
- * (A/B over 8 scenes x 3 repeats). Phrasing the rule in the description's words is
- * the same load-bearing trick as "above the runner" for yPos 75 - see the comment
- * in `../core/vocabulary.js`.
+ * model answers only from the rule that names its sentence's own words. That is why the
+ * bird rules are three and not two, and why each one quotes its description phrase word
+ * for word - `A bird flying low in the air`, `at middle height`, `high in the air`. With
+ * the first two rules alone, a body-height bird was covered by neither and the model
+ * guessed `bow`: it slid underneath a bird it had to clear, which is the crash that
+ * followed the perception fix once bird sentences first reached the model at all. Adding
+ * a rule that quoted the description's own phrase flipped `bird_body@130` from `bow` 3/3
+ * wrong to `jump` 3/3 right with no movement on any other scene (A/B over 8 scenes x 3
+ * repeats). The phrases were relative until now - "above the runner", "at the same height
+ * as the runner" - which had to be explained by the rule text and still left the yPos-75
+ * bird reading as body-level; plain altitude words remove the need to explain, and leave
+ * each rule matching one band and one band only. See `../core/vocabulary.js`.
+ *
+ * The high bird's rule names no maneuver on purpose. Its reference answer is `hold` - it
+ * passes over a standing dino untouched - and `hold` is not in this question's label
+ * space; it is asserted later, by `urgent`, because doing nothing is correct at every
+ * distance. Bowing and jumping are both geometrically free at yPos 50 (extent 58-77
+ * clears both a bow at 111 and a jump's 91px apex), so whichever of the two the model
+ * spends on it is survivable, and the rule exists to stop it borrowing the middle-height
+ * band's answer rather than to command one.
  *
  * `criteria` doubles as the label space, so both entries are written to describe the
  * situation each maneuver is for rather than to order the model.
@@ -108,8 +118,9 @@ export const QUESTIONS = {
     instructions:
       'A man running and cannot stop, say which maneuver clears the obstacle ahead. ' +
       'A cactus standing on the ground must be jumped. ' +
-      'A bird flying above the runner must be bowed under. ' +
-      'A bird flying at the same height as the runner must be jumped.',
+      'A bird flying low in the air must be jumped. ' +
+      'A bird flying at middle height in the air must be bowed under. ' +
+      'A bird flying high in the air must not be jumped.',
     criteria: {
       jump: 'Jump: go over the top of it.',
       bow: 'Bow: shrink down and go underneath it.',

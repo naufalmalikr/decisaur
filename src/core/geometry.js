@@ -33,14 +33,18 @@ export const CLEARANCE_MARGIN = 2;
  * inside 200px is already inside the jump window.
  *
  * @param {number} centreDistance Pixels from the dino's centre to the obstacle's.
+ * @param {{overhead?: boolean}} [options]
+ * @param {boolean} [options.overhead] True when the obstacle passes above the dino.
  * @returns {string}
  */
-export function describeDistance(centreDistance) {
-  if (!Number.isFinite(centreDistance)) return 'far away';
-  if (centreDistance <= 150) return 'very close, almost touching it';
-  if (centreDistance <= 300) return 'close';
-  if (centreDistance <= 600) return 'some way off';
-  return 'far away';
+export function describeDistance(centreDistance, options = {}) {
+  if (!Number.isFinite(centreDistance)) return 'far away ahead of';
+  if (centreDistance <= 150) {
+    return options.overhead === true ? 'passing overhead of' : 'very close and almost touching to';
+  }
+  if (centreDistance <= 300) return 'close to';
+  if (centreDistance <= 600) return 'some way off to';
+  return 'far away ahead of';
 }
 
 /**

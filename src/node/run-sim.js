@@ -80,13 +80,14 @@ class ScriptedDecider {
     }
 
     const seesBird = state.includes('bird');
-    const overhead = state.includes('well above the runner') || state.includes('above the runner,');
+    // A bow clears every airborne band but the low one; see the extent table in classify.js.
+    const bowable = state.includes('flying at middle height in the air') || state.includes('flying high in the air');
     const close = state.includes('very close') || state.includes('close ahead');
     let maneuver;
     if (this.strategy === 'oracle') {
       if (!close) maneuver = 'hold';
       else if (!seesBird) maneuver = 'jump';
-      else maneuver = overhead ? 'bow' : 'jump';
+      else maneuver = bowable ? 'bow' : 'jump';
     } else {
       // Always claims the worst thing it can, with total confidence.
       maneuver = seesBird ? 'jump' : 'bow';
